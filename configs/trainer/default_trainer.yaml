@@ -1,0 +1,7 @@
+name: default_trainer
+params:
+  epochs: 100
+  patience: 15
+  val_check_interval: 1
+  grad_clip: 1.0
+  output_dir: "./outputs/checkpoints"

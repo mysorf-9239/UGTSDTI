@@ -1,0 +1,15 @@
+# Default Main Entry Configuration
+defaults:
+  - _self_
+  - model: default_hybrid
+  - data: davis_s1
+  - trainer: default_trainer
+
+run_name: "ugtsdti_baseline"
+seed: 42
+strict_cudnn: false
+log_level: "INFO"
+output_dir: "./outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"
+
+logging:
+  wandb_enabled: true

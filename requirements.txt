@@ -1,0 +1,13 @@
+torch>=2.0.0
+numpy
+pandas
+scikit-learn
+loguru
+hydra-core>=1.3.0
+wandb
+PyTDC
+transformers
+hydra-optuna-sweeper
+rdkit
+torch_geometric
+tqdm
