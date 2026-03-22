@@ -67,6 +67,8 @@ class TDCCachingDataset(Dataset):
         """
         Converts raw SMILES and FASTA to PyG graphs and ESM tokens.
         """
+        import hashlib
+
         from tqdm import tqdm
 
         from ugtsdti.utils.chemistry import smiles_to_graph
@@ -88,11 +90,18 @@ class TDCCachingDataset(Dataset):
             # 2. FASTA to ESM Tokens
             target_tokens = tokenizer.encode(target_fasta)
 
+            # 3. Deterministic Node IDs for Teacher Transductive Lookup
+            # We use MD5 modulo a large prime (100003) to simulate a global sparse dictionary seamlessly
+            d_hash = int(hashlib.md5(drug_smiles.encode()).hexdigest(), 16) % 100003
+            t_hash = int(hashlib.md5(target_fasta.encode()).hexdigest(), 16) % 100003
+
             item = {
                 "drug": drug_graph,
                 "target_ids": target_tokens["input_ids"],
                 "target_mask": target_tokens["attention_mask"],
-                "label": torch.tensor([y], dtype=torch.float32),  # Shape [1] for loss compatibility
+                "label": torch.tensor([y], dtype=torch.float32),
+                "drug_index": torch.tensor([d_hash], dtype=torch.long),
+                "target_index": torch.tensor([t_hash], dtype=torch.long),
             }
             processed.append(item)
 

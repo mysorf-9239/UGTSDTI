@@ -103,6 +103,8 @@ def test_tdc_caching_and_batching(MockAutoTokenizer):
     assert "drug" in sample
     assert "target_ids" in sample
     assert "label" in sample
+    assert "drug_index" in sample, "Loader must output transductive drug hash"
+    assert "target_index" in sample, "Loader must output transductive target hash"
 
     # Test batching via PyG
     loader = DataLoader(dataset, batch_size=4, shuffle=True)

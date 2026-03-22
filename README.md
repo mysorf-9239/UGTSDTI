@@ -43,7 +43,7 @@ graph TD
 ---
 
 ## 🌟 Modern SOTA Integration
-- **Dictionary-based Multimodal DataLoader:** Cleanly collates RDKit PyG Graphs (`batch["drug"]`) and HuggingFace Padded Tokens (`batch["target_ids"]`) into recursive dictionary batches without ugly tuples.
+- **Dictionary-based Multimodal DataLoader:** Cleanly collates RDKit PyG Graphs (`batch["drug"]`), HuggingFace Padded Tokens (`batch["target_ids"]`), and Deterministic MD5 Global Hash IDs (`batch["drug_index"]`, `batch["target_index"]`) for both Inductive Student and Transductive Teacher models.
 - **Hydra Configuration:** Multi-level dict configs for true plug-and-play decoupling.
 - **Weights & Biases (WandB):** Automated metric tracking and hyperparameter sweeping via `hydra-optuna`.
 - **PyTDC (Therapeutics Data Commons):** Natively fetches DAVIS, KIBA, and BindingDB datasets with S1-S4 cold-split benchmarks.
