@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -35,7 +35,7 @@ class BaselineTeacher(nn.Module):
             nn.Linear(hidden_dim, 1),
         )
 
-    def forward(self, batch: Dict[str, Any]) -> torch.Tensor:
+    def forward(self, batch: dict[str, Any]) -> dict[str, torch.Tensor]:
         """
         Forward pass expecting drug_index and target_index.
         """
@@ -48,4 +48,4 @@ class BaselineTeacher(nn.Module):
         fused_features = torch.cat([d_features, t_features], dim=1)
         logits = self.fusion(fused_features)
 
-        return logits
+        return {"logits": logits}

@@ -100,9 +100,9 @@ class Trainer:
             inputs = batch
 
             self.optimizer.zero_grad()
-            y_prob = self.model(inputs)
+            y_prob_dict = self.model(inputs)
 
-            loss = self.loss_fn(y_prob, y_true)
+            loss = self.loss_fn(y_prob_dict, y_true)
             loss.backward()
 
             if self.grad_clip > 0:
@@ -131,11 +131,13 @@ class Trainer:
             y_true = batch.pop("label").float()
             inputs = batch
 
-            y_prob = self.model(inputs)
-            loss = self.loss_fn(y_prob, y_true)
+            y_prob_dict = self.model(inputs)
+            loss = self.loss_fn(y_prob_dict, y_true)
 
             total_loss += loss.item() * y_true.size(0)
-            all_preds.append(y_prob.cpu().numpy())
+
+            # For AUROC/metrics, we specifically extract the main predictions
+            all_preds.append(y_prob_dict["logits"].detach().cpu().numpy())
             all_trues.append(y_true.cpu().numpy())
 
         y_prob_full = np.concatenate(all_preds)

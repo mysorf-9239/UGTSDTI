@@ -2,12 +2,11 @@ from importlib import import_module
 
 import hydra
 import torch
-import torch.nn as nn
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torch_geometric.loader import DataLoader
 
-from ugtsdti.core.registry import DATASETS, MODELS
+from ugtsdti.core.registry import DATASETS, LOSSES, MODELS
 from ugtsdti.core.trainer import Trainer
 from ugtsdti.utils.logger import setup_logger, setup_wandb
 from ugtsdti.utils.seed import make_reproducible
@@ -17,6 +16,7 @@ def bootstrap_registries() -> None:
     """Import plugin packages so registry decorators execute before build()."""
     import_module("ugtsdti.models")
     import_module("ugtsdti.data")
+    import_module("ugtsdti.losses")
 
 
 def build_system(cfg: DictConfig):
@@ -64,7 +64,10 @@ def main(cfg: DictConfig):
     # 4. Initialize Trainer and run
     trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer
     device = torch.device(trainer_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
-    loss_fn = nn.BCEWithLogitsLoss()
+
+    loss_cfg = trainer_cfg.get("loss", {"name": "bce_with_logits"})
+    loss_fn = LOSSES.build(loss_cfg)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=trainer_cfg.get("lr", 1e-3))
 
     trainer = Trainer(

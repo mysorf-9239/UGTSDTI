@@ -29,12 +29,16 @@ class HybridDTIModel(nn.Module):
         # --- Simplified Forward ---
         if self.is_hybrid:
             # 1. Student Forward
-            s_out = self.student(x)
+            s_out = self.student(x)["logits"]
             # 2. Teacher Forward
-            t_out = self.teacher(x)
+            t_out = self.teacher(x)["logits"]
             # 3. Fusion Forward
             fusion_out = self.fusion(s_out, t_out)
-            return fusion_out
+            return {
+                "logits": fusion_out,
+                "student_logits": s_out,
+                "teacher_logits": t_out,
+            }
         elif self.student is not None:
             return self.student(x)
         elif self.teacher is not None:
