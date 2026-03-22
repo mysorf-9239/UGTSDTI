@@ -11,6 +11,20 @@ from tqdm import tqdm
 from ugtsdti.core.metrics import compute_dti_metrics
 
 
+def batch_to_device(batch, device):
+    """Recursively move tensors and dictionaries to the specified device."""
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device)
+    elif isinstance(batch, dict):
+        return {k: batch_to_device(v, device) for k, v in batch.items()}
+    elif hasattr(batch, "to"):
+        # For PyG Data/Batch objects
+        return batch.to(device)
+    elif isinstance(batch, list):
+        return [batch_to_device(v, device) for v in batch]
+    return batch
+
+
 class Trainer:
     """
     A professional, boilerplate-free training loop for UGTSDTI.
@@ -81,15 +95,9 @@ class Trainer:
 
         pbar = tqdm(loader, desc=f"Epoch {self.current_epoch}/{self.epochs} [Train]")
         for batch in pbar:
-            # Note: The exact unpacking depends on your data format.
-            # Assuming standard tuple `(inputs, labels)` for now.
-            inputs, y_true = batch
-            # Move to device heuristically
-            if isinstance(inputs, dict):
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            elif isinstance(inputs, torch.Tensor):
-                inputs = inputs.to(self.device)
-            y_true = y_true.to(self.device).float()
+            batch = batch_to_device(batch, self.device)
+            y_true = batch.pop("label").float()
+            inputs = batch
 
             self.optimizer.zero_grad()
             y_prob = self.model(inputs)
@@ -119,12 +127,9 @@ class Trainer:
 
         pbar = tqdm(loader, desc=f"Epoch {self.current_epoch} [{prefix.capitalize()}]")
         for batch in pbar:
-            inputs, y_true = batch
-            if isinstance(inputs, dict):
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            elif isinstance(inputs, torch.Tensor):
-                inputs = inputs.to(self.device)
-            y_true = y_true.to(self.device).float()
+            batch = batch_to_device(batch, self.device)
+            y_true = batch.pop("label").float()
+            inputs = batch
 
             y_prob = self.model(inputs)
             loss = self.loss_fn(y_prob, y_true)

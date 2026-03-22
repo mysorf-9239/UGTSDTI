@@ -43,11 +43,12 @@ graph TD
 ---
 
 ## 🌟 Modern SOTA Integration
+- **Dictionary-based Multimodal DataLoader:** Cleanly collates RDKit PyG Graphs (`batch["drug"]`) and HuggingFace Padded Tokens (`batch["target_ids"]`) into recursive dictionary batches without ugly tuples.
 - **Hydra Configuration:** Multi-level dict configs for true plug-and-play decoupling.
 - **Weights & Biases (WandB):** Automated metric tracking and hyperparameter sweeping via `hydra-optuna`.
 - **PyTDC (Therapeutics Data Commons):** Natively fetches DAVIS, KIBA, and BindingDB datasets with S1-S4 cold-split benchmarks.
 - **Feature Caching (`.pt`):** Lightning fast dataloading bypassing repetitive RDKit or FASTA extraction.
-- **Protein Language Models (PLMs):** Pre- интегрированный HuggingFace `transformers` (ESM-2, ProtBERT) directly into `@register_model`.
+- **Protein Language Models (PLMs):** Pre-integrated HuggingFace `transformers` (ESM-2, ProtBERT) directly into `@register_model`.
 
 ---
 

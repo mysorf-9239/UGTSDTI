@@ -75,6 +75,7 @@ models/
 wandb/
 data/raw/
 data/processed/
+data/*.tab
 
 # Agent
 .agent/

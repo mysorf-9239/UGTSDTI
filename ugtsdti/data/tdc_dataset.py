@@ -65,22 +65,34 @@ class TDCCachingDataset(Dataset):
 
     def _preprocess_and_cache(self, df):
         """
-        Converts raw SMILES and FASTA to features.
-        In a real scenario, this applies RDKit for drugs and loads ESM caches for proteins.
-        For boilerplate completion, we mock the feature dimensions.
+        Converts raw SMILES and FASTA to PyG graphs and ESM tokens.
         """
+        from tqdm import tqdm
+
+        from ugtsdti.utils.chemistry import smiles_to_graph
+        from ugtsdti.utils.sequence import ESMSequenceTokenizer
+
         processed = []
-        for _, row in df.iterrows():
+        tokenizer = ESMSequenceTokenizer()
+
+        for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Processing {self.split}"):
+            drug_smiles = row["Drug"]
+            target_fasta = row["Target"]
             y = float(row["Y"])
 
-            # Mocking the heavy computation
-            # D = rdkit_to_graph(drug_smiles)
-            # T = self.esm_model.get_embedding(target_fasta)
+            # 1. SMILES to PyG Molecular Graph
+            drug_graph = smiles_to_graph(drug_smiles)
+            if drug_graph is None:
+                continue  # Skip invalid SMILES that RDKit cannot parse
+
+            # 2. FASTA to ESM Tokens
+            target_tokens = tokenizer.encode(target_fasta)
 
             item = {
-                "drug": torch.randn(128),  # Mock drug embedding
-                "target": torch.randn(320),  # Mock ESM-2 8M embedding
-                "label": torch.tensor(y, dtype=torch.float32),
+                "drug": drug_graph,
+                "target_ids": target_tokens["input_ids"],
+                "target_mask": target_tokens["attention_mask"],
+                "label": torch.tensor([y], dtype=torch.float32),  # Shape [1] for loss compatibility
             }
             processed.append(item)
 
@@ -90,4 +102,5 @@ class TDCCachingDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx], self.data[idx]["label"]
+        # Return dict natively. PyG `DataLoader` automatically collates dict values recursively.
+        return self.data[idx]
