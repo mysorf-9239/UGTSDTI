@@ -13,27 +13,27 @@ This framework is completely refactored from the ground up to support modern Dee
 ## 🏗 Architecture Diagram
 ```mermaid
 graph TD
-    subgraph Configurations ["⚙️ Config System (Hydra)"]
-        A[configs/default.yaml] --> M[model/hybrid.yaml]
-        A --> D[data/s1.yaml]
-        A --> T[trainer/default.yaml]
+    subgraph Configurations["Config System (Hydra)"]
+        A["configs/default.yaml"] --> M["model/default_hybrid.yaml"]
+        A --> D["data/davis_s1.yaml"]
+        A --> T["trainer/default_trainer.yaml"]
     end
 
-    subgraph CoreEngine ["🧠 Core Engine (Frozen)"]
-        R[Registry Pattern @register]
-        Trainer[Trainer Loop]
-        Metrics[DTI Metrics (CI, AUROC)]
-        Logger[WandB + Loguru]
+    subgraph CoreEngine["Core Engine"]
+        R["Registry Pattern @register"]
+        Trainer["Trainer Loop"]
+        Metrics["DTI Metrics (CI, AUROC)"]
+        Logger["WandB + Loguru"]
     end
 
-    subgraph Plugins ["🧩 Customizable Plugins"]
-        Model[Models: ESM, PairGate, GCN]
-        Data[Datasets: PyTDC Caching]
+    subgraph Plugins["Customizable Plugins"]
+        Model["Models: ESM, PairGate, GCN"]
+        Data["Datasets: PyTDC Caching"]
     end
 
     Configurations --> R
-    R --> |"Build from string"| Model
-    R --> |"Build from string"| Data
+    R -->|"Build from string"| Model
+    R -->|"Build from string"| Data
     Model --> Trainer
     Data --> Trainer
     Metrics --> Trainer
