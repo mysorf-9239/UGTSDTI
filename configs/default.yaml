@@ -1,7 +1,7 @@
 # Default Main Entry Configuration
 defaults:
   - _self_
-  - model: default_hybrid
+  - model: hybrid_baseline
   - data: davis_s1
   - trainer: default_trainer
 

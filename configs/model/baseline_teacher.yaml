@@ -1,7 +1,0 @@
-# Minimal config for the baseline teacher validation
-name: "baseline_teacher"
-params:
-  num_drugs: 100003     # Modulo prime used in data hashing
-  num_targets: 100003
-  hidden_dim: 64
-  dropout: 0.1

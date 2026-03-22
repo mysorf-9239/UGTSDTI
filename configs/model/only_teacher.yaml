@@ -1,0 +1,10 @@
+name: "hybrid_dti"
+params:
+  student_cfg: null
+  teacher_cfg:
+    name: "baseline_teacher"
+    params:
+      hidden_dim: 128
+      num_drugs: 100003
+      num_targets: 100003
+  fusion_cfg: null

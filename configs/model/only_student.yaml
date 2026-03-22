@@ -1,0 +1,8 @@
+name: "hybrid_dti"
+params:
+  student_cfg:
+    name: "baseline_student"
+    params:
+      hidden_dim: 128
+  teacher_cfg: null
+  fusion_cfg: null

@@ -71,8 +71,8 @@ class TDCCachingDataset(Dataset):
 
         from tqdm import tqdm
 
-        from ugtsdti.utils.chemistry import smiles_to_graph
-        from ugtsdti.utils.sequence import ESMSequenceTokenizer
+        from ugtsdti.data.transforms.chemistry import smiles_to_graph
+        from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
         processed = []
         tokenizer = ESMSequenceTokenizer()

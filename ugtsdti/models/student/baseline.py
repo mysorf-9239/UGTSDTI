@@ -8,8 +8,8 @@ from torch_geometric.nn import global_mean_pool
 from ugtsdti.core.registry import MODELS
 
 
-@MODELS.register("baseline")
-class BaselineModel(nn.Module):
+@MODELS.register("baseline_student")
+class BaselineStudent(nn.Module):
     """
     Ultra-lightweight Baseline/Dummy Model for Pipeline Validation.
     - Drug Branch: Directly pools raw RDKit features (No Graph Convolutions).

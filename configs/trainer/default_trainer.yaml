@@ -5,3 +5,5 @@ params:
   val_check_interval: 1
   grad_clip: 1.0
   output_dir: "./outputs/checkpoints"
+loss:
+  name: "bce_with_logits"
