@@ -7,14 +7,14 @@ import pytest
 import torch
 
 # Ensure utilities are importable
-from ugtsdti.utils.chemistry import smiles_to_graph
-from ugtsdti.utils.sequence import ESMSequenceTokenizer
+from ugtsdti.data.transforms.chemistry import smiles_to_graph
+from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
 # Requires PyTDC and torch_geometric
 try:
     from torch_geometric.loader import DataLoader
 
-    from ugtsdti.data.tdc_dataset import TDCCachingDataset
+    from ugtsdti.data.datasets.tdc_dataset import TDCCachingDataset
 
     HAS_PYG = True
 except ImportError:
@@ -44,7 +44,7 @@ def test_invalid_smiles():
     assert data is None
 
 
-@patch("ugtsdti.utils.sequence.AutoTokenizer")
+@patch("ugtsdti.data.transforms.sequence.AutoTokenizer")
 def test_sequence_tokenizer(MockAutoTokenizer):
     """Test ESM Tokenization bounding and mapping (Mocked to avoid DNS errors)."""
     # Mock the return value of tokenizer(sequence)
@@ -66,7 +66,7 @@ def test_sequence_tokenizer(MockAutoTokenizer):
 
 
 @pytest.mark.skipif(not HAS_PYG, reason="PyG/PyTDC not installed in this environment.")
-@patch("ugtsdti.utils.sequence.AutoTokenizer")
+@patch("ugtsdti.data.transforms.sequence.AutoTokenizer")
 def test_tdc_caching_and_batching(MockAutoTokenizer):
     """Test full integration with PyTDC and PyG batching."""
     cache_dir = "./tests/data_cache"
@@ -88,7 +88,7 @@ def test_tdc_caching_and_batching(MockAutoTokenizer):
         }
     )
 
-    with patch("ugtsdti.data.tdc_dataset.DTI") as MockDTI:
+    with patch("ugtsdti.data.datasets.tdc_dataset.DTI") as MockDTI:
         # Configure the mock to return a split dictionary
         instance = MockDTI.return_value
         instance.get_split.return_value = {"train": mock_df, "valid": mock_df, "test": mock_df}
