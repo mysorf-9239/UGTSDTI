@@ -71,11 +71,11 @@ venv.bak/
 
 # Project specific
 outputs/
-models/
 wandb/
 data/raw/
 data/processed/
 data/*.tab
+data/cache/*/*.pt
 
 # Agent
 .agent/

@@ -2,30 +2,32 @@ import numpy as np
 from sklearn.metrics import average_precision_score, f1_score, mean_squared_error, roc_auc_score
 
 
-def compute_dti_metrics(y_true, y_prob, threshold=0.5, returns_dict=True):
+def compute_dti_metrics(y_true, y_prob, threshold=7.0, returns_dict=True):
     """
     Standard evaluation metrics for DTI standard research.
-    Args:
-        y_true: Ground truth binary labels (N,)
-        y_prob: Predicted probabilities / sigmoid outputs (N,)
-        threshold: Binarization threshold for F1-score
+    Auto-detects continuous labels and binarizes them for classification metrics.
     """
-    y_true = np.asarray(y_true)
-    y_prob = np.asarray(y_prob)
+    y_true = np.asarray(y_true).flatten()
+    y_prob = np.asarray(y_prob).flatten()
+
+    # Auto-binarize if continuous
+    is_continuous = len(np.unique(y_true)) > 2
+    y_true_cls = (y_true >= threshold).astype(int) if is_continuous else y_true
+
     y_pred = (y_prob >= threshold).astype(int)
 
     metrics = {}
     try:
-        metrics["auroc"] = roc_auc_score(y_true, y_prob)
+        metrics["auroc"] = roc_auc_score(y_true_cls, y_prob)
     except ValueError:
         metrics["auroc"] = 0.0
 
     try:
-        metrics["auprc"] = average_precision_score(y_true, y_prob)
+        metrics["auprc"] = average_precision_score(y_true_cls, y_prob)
     except ValueError:
         metrics["auprc"] = 0.0
 
-    metrics["f1"] = f1_score(y_true, y_pred, zero_division=0)
+    metrics["f1"] = f1_score(y_true_cls, y_pred, zero_division=0)
     metrics["mse"] = mean_squared_error(y_true, y_prob)
 
     # Concordance Index (CI) calculation natively

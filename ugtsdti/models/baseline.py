@@ -1,0 +1,78 @@
+from typing import Any, Dict
+
+import torch
+import torch.nn as nn
+from torch_geometric.data import Batch
+from torch_geometric.nn import global_mean_pool
+
+from ugtsdti.core.registry import MODELS
+
+
+@MODELS.register("baseline")
+class BaselineModel(nn.Module):
+    """
+    Ultra-lightweight Baseline/Dummy Model for Pipeline Validation.
+    - Drug Branch: Directly pools raw RDKit features (No Graph Convolutions).
+    - Prot Branch: Uses a simple nn.Embedding matrix and pools over sequences (No Transformers).
+    - Fusion: Concat -> Linear -> Logit
+    """
+
+    def __init__(
+        self,
+        drug_raw_dim: int = 7,  # Default RDKit atoms features
+        prot_vocab_size: int = 50,  # Max typical amino acid vocab
+        prot_embed_dim: int = 32,
+        hidden_dim: int = 64,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+
+        # Protein (1D Sequence) Branch
+        self.prot_embedding = nn.Embedding(prot_vocab_size, prot_embed_dim, padding_idx=0)
+        self.prot_proj = nn.Linear(prot_embed_dim, hidden_dim)
+
+        # Drug (Graph) Branch
+        # We don't use GCNs, just project the raw atom features to hidden_dim
+        self.drug_proj = nn.Linear(drug_raw_dim, hidden_dim)
+
+        # Fusion
+        self.fusion = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, batch: Dict[str, Any]) -> torch.Tensor:
+        """
+        Forward pass expecting a heterogeneous dictionary.
+        """
+        ### 1. Drug Branch ###
+        # Extract PyG node features and batch assignments
+        drug_graph: Batch = batch["drug"]
+        x, graph_batch_idx = drug_graph.x.float(), drug_graph.batch
+
+        # Project raw atoms -> Pool over molecules
+        x = self.drug_proj(x)
+        drug_emb = global_mean_pool(x, graph_batch_idx)  # Shape: [Batch_Size, hidden_dim]
+
+        ### 2. Protein Branch ###
+        # Extract padded token IDs
+        target_ids: torch.Tensor = batch["target_ids"]  # Shape: [Batch_Size, Seq_Len]
+        target_mask: torch.Tensor = batch["target_mask"]  # Shape: [Batch_Size, Seq_Len]
+
+        # Embed tokens -> Sum -> Average
+        prot_tokens = self.prot_embedding(target_ids)  # Shape: [B, L, prot_embed_dim]
+        # Mask out padding tokens (mask is 1 for real tokens, 0 for pad)
+        prot_tokens = prot_tokens * target_mask.unsqueeze(-1).float()
+
+        # Mean Pooling over sequence length
+        lens = target_mask.sum(dim=1, keepdim=True).clamp(min=1)
+        prot_emb = prot_tokens.sum(dim=1) / lens  # Shape: [B, prot_embed_dim]
+        prot_emb = self.prot_proj(prot_emb)  # Shape: [B, hidden_dim]
+
+        ### 3. Fusion ###
+        fused_features = torch.cat([drug_emb, prot_emb], dim=1)  # Shape: [B, hidden_dim * 2]
+        logits = self.fusion(fused_features)  # Shape: [B, 1]
+
+        return logits

@@ -1,0 +1,8 @@
+# Minimal config for the baseline validation model
+name: "baseline"
+params:
+  drug_raw_dim: 7         # 7 base RDKit OGB features
+  prot_vocab_size: 50     # Sufficient for ESM's minimal padded output
+  prot_embed_dim: 32      # Minimal embedding for fast testing
+  hidden_dim: 64          # Lightweight projection
+  dropout: 0.1

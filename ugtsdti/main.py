@@ -1,10 +1,14 @@
 from importlib import import_module
 
 import hydra
+import torch
+import torch.nn as nn
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
+from torch_geometric.loader import DataLoader
 
-from ugtsdti.core.registry import MODELS
+from ugtsdti.core.registry import DATASETS, MODELS
+from ugtsdti.core.trainer import Trainer
 from ugtsdti.utils.logger import setup_logger, setup_wandb
 from ugtsdti.utils.seed import make_reproducible
 
@@ -20,17 +24,25 @@ def build_system(cfg: DictConfig):
     bootstrap_registries()
 
     logger.info("Building Datasets from config...")
-    # train_dataset = DATASETS.build(cfg.data.train)
-    # val_dataset = DATASETS.build(cfg.data.val)
-    if cfg.get("data") is not None:
-        logger.debug(f"Dataset config selected: {cfg.data.get('name', 'unknown')}")
+    if not hasattr(cfg.data, "train") or not hasattr(cfg.data, "val"):
+        raise ValueError("Config Data must include `train` and `val` keys!")
+
+    train_dataset = DATASETS.build(cfg.data.train)
+    val_dataset = DATASETS.build(cfg.data.val)
+
+    batch_size = cfg.trainer.get("batch_size", 32)
+    num_workers = cfg.trainer.get("num_workers", 0)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=num_workers
+    )
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     logger.info("Building Model from config...")
-    # Because of modularity, the top-level model handles routing
     model = MODELS.build(cfg.model)
-    logger.info(f"Model instantiated:\n{model}")
+    logger.info(f"Model instantiated:\n{model.__class__.__name__}")
 
-    return model
+    return train_loader, val_loader, model
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="default")
@@ -44,17 +56,30 @@ def main(cfg: DictConfig):
         make_reproducible(cfg.seed, strict_cudnn=cfg.get("strict_cudnn", False))
 
     logger.info(f"Starting experiment: {cfg.get('run_name', 'default_run')}")
-    # Print a beautiful representation of the config
     logger.debug(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
 
     # 3. Build components from standard registries
-    model = build_system(cfg)
+    train_loader, val_loader, model = build_system(cfg)
 
     # 4. Initialize Trainer and run
-    # trainer = Trainer(model, cfg.trainer)
-    # trainer.fit(...)
+    trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer
+    device = torch.device(trainer_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
+    loss_fn = nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=trainer_cfg.get("lr", 1e-3))
 
-    logger.info(f"System bootstrap completed with model: {model.__class__.__name__}")
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        device=device,
+        cfg_trainer=trainer_cfg,
+        run=run,
+    )
+
+    logger.info("Handing off to Trainer...")
+    trainer.fit(train_loader, val_loader)
+
+    logger.info("System bootstrap completed successfully.")
     if run is not None:
         run.finish()
 
