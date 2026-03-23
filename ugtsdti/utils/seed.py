@@ -6,15 +6,13 @@ import torch
 from loguru import logger
 
 
-def make_reproducible(seed: int = 42, strict_cudnn: bool = False):
-    """
-    Forces PyTorch, NumPy, and Python to use generic random seeds to maximize
-    reproducibility across training runs.
+def set_random_seed(seed: int = 42, strict_cudnn: bool = False) -> None:
+    """Set random seeds for reproducibility across PyTorch, NumPy, and Python.
 
     Args:
-        seed: The integer seed to lock in.
-        strict_cudnn: If True, makes CUDA convolution algorithms deterministic
-                      (may significantly impact training performance).
+        seed: Integer seed value.
+        strict_cudnn: If ``True``, forces deterministic cuDNN algorithms.
+            Improves reproducibility at the cost of training throughput.
     """
     logger.info(f"Locking RNG seeds to: {seed}")
 

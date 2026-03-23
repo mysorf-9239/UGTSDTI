@@ -110,37 +110,31 @@ def smiles_to_graph(smiles: str) -> Optional["Data"]:
         logger.warning(f"RDKit could not parse SMILES: {smiles}")
         return None
 
-    # Node Features
-    x_list = []
-    for atom in mol.GetAtoms():  # type: ignore
-        x_list.append(extract_atom_features(atom))
+    # Node features
+    atom_features_list = [extract_atom_features(atom) for atom in mol.GetAtoms()]  # type: ignore
 
-    # If a single atom molecule (like an Ion), we still need an empty edge_index
-    if len(x_list) == 0:
+    if len(atom_features_list) == 0:
         return None
 
-    x = torch.tensor(x_list, dtype=torch.long)
+    x = torch.tensor(atom_features_list, dtype=torch.long)
 
-    # Edge Features
-    edge_indices = []
-    edge_attrs = []
+    # Edge features
+    edge_index_list: list = []
+    edge_attr_list: list = []
 
     for bond in mol.GetBonds():  # type: ignore
         i = bond.GetBeginAtomIdx()
         j = bond.GetEndAtomIdx()
-        b_attr = extract_bond_features(bond)
+        bond_feat = extract_bond_features(bond)
 
-        # PyG graphs are usually directed mathematically, so we add both i->j and j->i
-        edge_indices.append([i, j])
-        edge_indices.append([j, i])
-        edge_attrs.append(b_attr)
-        edge_attrs.append(b_attr)
+        # Add both directions (undirected graph convention in PyG)
+        edge_index_list += [[i, j], [j, i]]
+        edge_attr_list += [bond_feat, bond_feat]
 
-    if len(edge_indices) > 0:
-        edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
-        edge_attr = torch.tensor(edge_attrs, dtype=torch.long)
+    if len(edge_index_list) > 0:
+        edge_index = torch.tensor(edge_index_list, dtype=torch.long).t().contiguous()
+        edge_attr = torch.tensor(edge_attr_list, dtype=torch.long)
     else:
-        # No bonds (single atom molecule)
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, 3), dtype=torch.long)
 

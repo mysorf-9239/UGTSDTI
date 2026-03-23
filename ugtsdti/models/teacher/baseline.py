@@ -36,16 +36,18 @@ class BaselineTeacher(nn.Module):
         )
 
     def forward(self, batch: dict[str, Any]) -> dict[str, torch.Tensor]:
-        """
-        Forward pass expecting drug_index and target_index.
-        """
-        d_idx = batch["drug_index"].squeeze(-1)
-        t_idx = batch["target_index"].squeeze(-1)
+        """Forward pass using transductive node indices.
 
-        d_features = self.drug_emb(d_idx)
-        t_features = self.target_emb(t_idx)
+        Args:
+            batch: Must contain ``drug_index`` and ``target_index`` (LongTensor [B]).
+        """
+        drug_idx = batch["drug_index"].squeeze(-1)
+        target_idx = batch["target_index"].squeeze(-1)
 
-        fused_features = torch.cat([d_features, t_features], dim=1)
-        logits = self.fusion(fused_features)
+        drug_emb = self.drug_emb(drug_idx)  # [B, hidden_dim]
+        target_emb = self.target_emb(target_idx)  # [B, hidden_dim]
+
+        pair_emb = torch.cat([drug_emb, target_emb], dim=1)  # [B, hidden_dim * 2]
+        logits = self.fusion(pair_emb)
 
         return {"logits": logits}

@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - model: hybrid_baseline
-  - data: davis_s1
+  - data: tdc_davis
   - trainer: default_trainer
 
 run_name: "ugtsdti_baseline"

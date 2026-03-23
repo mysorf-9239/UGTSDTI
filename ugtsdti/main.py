@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 from ugtsdti.core.registry import DATASETS, LOSSES, MODELS
 from ugtsdti.core.trainer import Trainer
 from ugtsdti.utils.logger import setup_logger, setup_wandb
-from ugtsdti.utils.seed import make_reproducible
+from ugtsdti.utils.seed import set_random_seed
 
 
 def bootstrap_registries() -> None:
@@ -19,8 +19,8 @@ def bootstrap_registries() -> None:
     import_module("ugtsdti.losses")
 
 
-def build_system(cfg: DictConfig):
-    """Instantiate datasets, dataloaders, and models using the Registry."""
+def build_experiment_components(cfg: DictConfig):
+    """Instantiate datasets, dataloaders, and model from registry using Hydra config."""
     bootstrap_registries()
 
     logger.info("Building Datasets from config...")
@@ -53,13 +53,13 @@ def main(cfg: DictConfig):
 
     # 2. Setup reproducibility
     if cfg.get("seed") is not None:
-        make_reproducible(cfg.seed, strict_cudnn=cfg.get("strict_cudnn", False))
+        set_random_seed(cfg.seed, strict_cudnn=cfg.get("strict_cudnn", False))
 
     logger.info(f"Starting experiment: {cfg.get('run_name', 'default_run')}")
     logger.debug(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
 
     # 3. Build components from standard registries
-    train_loader, val_loader, model = build_system(cfg)
+    train_loader, val_loader, model = build_experiment_components(cfg)
 
     # 4. Initialize Trainer and run
     trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer

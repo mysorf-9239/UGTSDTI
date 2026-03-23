@@ -140,11 +140,11 @@ class Trainer:
             all_preds.append(y_prob_dict["logits"].detach().cpu().numpy())
             all_trues.append(y_true.cpu().numpy())
 
-        y_prob_full = np.concatenate(all_preds)
+        y_score_full = np.concatenate(all_preds)
         y_true_full = np.concatenate(all_trues)
 
         # Calculate DTI metrics
-        metrics = compute_dti_metrics(y_true_full, y_prob_full)
+        metrics = compute_dti_metrics(y_true_full, y_score=y_score_full)
         metrics["loss"] = total_loss / len(loader.dataset)
 
         # Format keys for logging

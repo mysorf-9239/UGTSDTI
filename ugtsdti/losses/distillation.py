@@ -19,10 +19,10 @@ class KDDualLoss(nn.Module):
         self.kd_loss = nn.MSELoss()
 
     def forward(self, model_outputs: dict, y_true: torch.Tensor) -> torch.Tensor:
-        main_loss = self.task_loss(model_outputs["logits"], y_true)
+        task_loss = self.task_loss(model_outputs["logits"], y_true)
 
         if "student_logits" in model_outputs and "teacher_logits" in model_outputs:
-            distillation = self.kd_loss(model_outputs["student_logits"], model_outputs["teacher_logits"])
-            return (1.0 - self.alpha) * main_loss + self.alpha * distillation
+            kd_loss = self.kd_loss(model_outputs["student_logits"], model_outputs["teacher_logits"])
+            return (1.0 - self.alpha) * task_loss + self.alpha * kd_loss
 
-        return main_loss
+        return task_loss

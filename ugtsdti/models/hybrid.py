@@ -21,53 +21,64 @@ class HybridDTIModel(nn.Module):
         # Determine training mode based on instantiated components
         self.is_hybrid = (self.student is not None) and (self.teacher is not None) and (self.fusion is not None)
 
-    def _estimate_epistemic_uncertainty(self, sub_model, x, mc_samples=5):
-        """
-        Calculates predictive variance using Monte Carlo Dropout.
-        Executes N stochastic forward passes without tracking gradients to serve as Uncertainty.
-        """
-        was_training = sub_model.training
-        sub_model.train()  # Force dropout layers active
-        with torch.no_grad():
-            preds = []
-            for _ in range(mc_samples):
-                preds.append(sub_model(x)["logits"])
-            # Stack: [Batch, 1, M]
-            var = torch.stack(preds, dim=-1).var(dim=-1)
-        if not was_training:
-            sub_model.eval()
-        return var
+    def _estimate_epistemic_uncertainty(self, branch: nn.Module, batch: dict, mc_samples: int = 5) -> torch.Tensor:
+        """Estimate epistemic uncertainty via Monte Carlo Dropout.
 
-    def forward(self, x):
+        Runs ``mc_samples`` stochastic forward passes with dropout active and
+        returns the per-sample predictive variance across passes.
+
+        Args:
+            branch: Student or Teacher sub-model (must have Dropout layers).
+            batch: Input batch dictionary.
+            mc_samples: Number of stochastic forward passes.
+
+        Returns:
+            Predictive variance tensor of shape ``(B,)``.
         """
-        Routing logic based on what components exist.
-        Supports Only-Student, Only-Teacher, and Hybrid Fusion modes natively.
+        training_mode = branch.training
+        branch.train()  # activate dropout
+        with torch.no_grad():
+            mc_logits = [branch(batch)["logits"] for _ in range(mc_samples)]
+        epistemic_var = torch.stack(mc_logits, dim=-1).var(dim=-1)
+        if not training_mode:
+            branch.eval()
+        return epistemic_var
+
+    def forward(self, batch: dict) -> dict:
+        """Route forward pass based on available sub-models.
+
+        Supports three modes determined by config:
+        - ``only_student``: student branch only.
+        - ``only_teacher``: teacher branch only.
+        - ``hybrid``: both branches fused via PairGate.
         """
         if self.is_hybrid:
-            # 1. Base Forward
-            s_out = self.student(x)["logits"]
-            t_out = self.teacher(x)["logits"]
+            student_logits = self.student(batch)["logits"]
+            teacher_logits = self.teacher(batch)["logits"]
 
-            # 2. Epistemic Uncertainty (Only if fusion requires it, e.g., pairgate_fusion)
-            # We use duck-typing: if fusion has mc_samples, it needs variance
             if hasattr(self.fusion, "mc_samples") and self.fusion.mc_samples > 0:
-                s_var = self._estimate_epistemic_uncertainty(self.student, x, self.fusion.mc_samples)
-                t_var = self._estimate_epistemic_uncertainty(self.teacher, x, self.fusion.mc_samples)
-                fusion_out = self.fusion(s_out, t_out, student_var=s_var, teacher_var=t_var)
+                student_uncertainty = self._estimate_epistemic_uncertainty(self.student, batch, self.fusion.mc_samples)
+                teacher_uncertainty = self._estimate_epistemic_uncertainty(self.teacher, batch, self.fusion.mc_samples)
+                fused_logits = self.fusion(
+                    student_logits,
+                    teacher_logits,
+                    student_var=student_uncertainty,
+                    teacher_var=teacher_uncertainty,
+                )
             else:
-                fusion_out = self.fusion(s_out, t_out)
+                fused_logits = self.fusion(student_logits, teacher_logits)
 
             return {
-                "logits": fusion_out,
-                "student_logits": s_out,
-                "teacher_logits": t_out,
+                "logits": fused_logits,
+                "student_logits": student_logits,
+                "teacher_logits": teacher_logits,
             }
 
         elif self.student is not None:
-            return self.student(x)
+            return self.student(batch)
 
         elif self.teacher is not None:
-            return self.teacher(x)
+            return self.teacher(batch)
 
         else:
-            raise ValueError("No valid sub-models instantiated in HybridDTIModel.")
+            raise ValueError("HybridDTIModel has no sub-models. Check student_cfg/teacher_cfg in config.")

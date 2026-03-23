@@ -59,13 +59,19 @@ class TDCCachingDataset(Dataset):
             raw_data = split_dict[split]
 
             logger.info(f"Processing and Caching {len(raw_data)} pairs...")
-            self.data = self._preprocess_and_cache(raw_data)
+            self.data = self._build_sample_list(raw_data)
             torch.save(self.data, self.cache_file)
             logger.info(f"Saved cache to {self.cache_file}")
 
-    def _preprocess_and_cache(self, df):
-        """
-        Converts raw SMILES and FASTA to PyG graphs and ESM tokens.
+    def _build_sample_list(self, df) -> list:
+        """Preprocess raw DataFrame rows into model-ready sample dicts.
+
+        Each sample contains:
+        - ``drug``: PyG molecular graph (RDKit atom/bond features).
+        - ``target_ids`` / ``target_mask``: ESM token tensors.
+        - ``label``: Affinity value as FloatTensor.
+        - ``drug_node_id`` / ``target_node_id``: Deterministic integer IDs for
+          Teacher transductive lookup (MD5 hash modulo large prime).
         """
         import hashlib
 
@@ -74,38 +80,40 @@ class TDCCachingDataset(Dataset):
         from ugtsdti.data.transforms.chemistry import smiles_to_graph
         from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
-        processed = []
+        _HASH_MODULUS = 100_003  # large prime; collision rate ~0.01% on DAVIS
+
+        samples = []
         tokenizer = ESMSequenceTokenizer()
 
-        for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Processing {self.split}"):
-            drug_smiles = row["Drug"]
-            target_fasta = row["Target"]
-            y = float(row["Y"])
+        for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Preprocessing [{self.split}]"):
+            drug_smiles: str = row["Drug"]
+            target_fasta: str = row["Target"]
+            affinity: float = float(row["Y"])
 
-            # 1. SMILES to PyG Molecular Graph
+            # 1. SMILES → PyG molecular graph
             drug_graph = smiles_to_graph(drug_smiles)
             if drug_graph is None:
-                continue  # Skip invalid SMILES that RDKit cannot parse
+                continue  # skip unparseable SMILES
 
-            # 2. FASTA to ESM Tokens
+            # 2. FASTA → ESM token tensors
             target_tokens = tokenizer.encode(target_fasta)
 
-            # 3. Deterministic Node IDs for Teacher Transductive Lookup
-            # We use MD5 modulo a large prime (100003) to simulate a global sparse dictionary seamlessly
-            d_hash = int(hashlib.md5(drug_smiles.encode()).hexdigest(), 16) % 100003
-            t_hash = int(hashlib.md5(target_fasta.encode()).hexdigest(), 16) % 100003
+            # 3. Deterministic node IDs for Teacher transductive lookup
+            drug_node_id = int(hashlib.md5(drug_smiles.encode()).hexdigest(), 16) % _HASH_MODULUS
+            target_node_id = int(hashlib.md5(target_fasta.encode()).hexdigest(), 16) % _HASH_MODULUS
 
-            item = {
-                "drug": drug_graph,
-                "target_ids": target_tokens["input_ids"],
-                "target_mask": target_tokens["attention_mask"],
-                "label": torch.tensor([y], dtype=torch.float32),
-                "drug_index": torch.tensor([d_hash], dtype=torch.long),
-                "target_index": torch.tensor([t_hash], dtype=torch.long),
-            }
-            processed.append(item)
+            samples.append(
+                {
+                    "drug": drug_graph,
+                    "target_ids": target_tokens["input_ids"],
+                    "target_mask": target_tokens["attention_mask"],
+                    "label": torch.tensor([affinity], dtype=torch.float32),
+                    "drug_index": torch.tensor([drug_node_id], dtype=torch.long),
+                    "target_index": torch.tensor([target_node_id], dtype=torch.long),
+                }
+            )
 
-        return processed
+        return samples
 
     def __len__(self):
         return len(self.data)
