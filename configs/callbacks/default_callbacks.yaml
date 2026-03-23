@@ -1,8 +1,0 @@
-name: default_callbacks
-params:
-  early_stopping:
-    monitor: "val/auroc"
-    mode: "max"
-  model_checkpoint:
-    save_top_k: 1
-    monitor: "val/auroc"

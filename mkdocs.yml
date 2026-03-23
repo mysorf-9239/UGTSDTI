@@ -1,0 +1,17 @@
+site_name: UGTSDTI Documentation
+site_description: Uncertainty-Gated Teacher–Student Learning for Drug–Target Interaction Prediction
+theme:
+  name: material
+  palette:
+    primary: deep purple
+    accent: deep orange
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Data Pipeline: data.md
+  - Models & Fusion: models.md

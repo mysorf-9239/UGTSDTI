@@ -1,4 +1,4 @@
-name: ugtsdti-full
+name: ugtsdti
 channels:
   - pytorch
   - pyg

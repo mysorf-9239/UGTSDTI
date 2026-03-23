@@ -2,7 +2,7 @@
 
 setup:
 	conda env create -f conda-recipes/full.yaml
-	conda run -n ugtsdti-full pre-commit install
+	conda run -n ugtsdti pre-commit install
 
 update:
 	conda env update -f conda-recipes/full.yaml --prune

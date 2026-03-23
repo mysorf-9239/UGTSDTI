@@ -1,7 +1,0 @@
-name: dti_standard_dataset
-params:
-  drugs_csv: "data/davis/drugs.csv"
-  proteins_fasta: "data/davis/proteins.fasta"
-  interactions_csv: "data/davis/interactions.csv"
-  split_scenario: "S1"
-  seed: 42

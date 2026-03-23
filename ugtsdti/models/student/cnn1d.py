@@ -8,8 +8,12 @@ from ugtsdti.core.registry import MODELS
 @MODELS.register("cnn1d_student")
 class CNN1DStudent(nn.Module):
     """
-    A simple 1D CNN baseline student model for DTI sequence inputs.
-    """
+    1D CNN student model for DTI sequence inputs.
+
+    WARNING: Not integrated with the multimodal batch format used by TDCCachingDataset.
+    The forward() method uses mock input handling (dict extraction via next(iter(...))).
+    Kept as a baseline reference for audit purposes only.
+    Do NOT use in experiments until properly integrated with the data pipeline."""
 
     def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int, num_classes: int = 1):
         super().__init__()
@@ -29,6 +33,7 @@ class CNN1DStudent(nn.Module):
             seq = x
 
         emb = self.embedding(seq).transpose(1, 2)  # (Batch, Embed, SeqLen)
+        # NOTE: mock input handling — not compatible with multimodal batch
 
         h = F.relu(self.conv1(emb))
         h = F.relu(self.conv2(h))
