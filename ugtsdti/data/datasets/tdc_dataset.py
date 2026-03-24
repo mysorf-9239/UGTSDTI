@@ -63,9 +63,16 @@ class TDCCachingDataset(Dataset):
         self.cache_file = os.path.join(self.cache_dir, "dataset.pt")
         split_frac = list(frac) if frac is not None else [0.8, 0.1, 0.1]
 
+        # Public attributes: set after loading/building
+        self.num_unique_drugs: int | None = None
+        self.num_unique_targets: int | None = None
+
         if os.path.exists(self.cache_file):
             logger.info(f"Loading cached {split} dataset from {self.cache_file}")
-            self.data = torch.load(self.cache_file)
+            cached = torch.load(self.cache_file)
+            self.data = cached["samples"]
+            self.num_unique_drugs = cached.get("num_unique_drugs")
+            self.num_unique_targets = cached.get("num_unique_targets")
         else:
             logger.info(f"Cache not found for {split}. Fetching {name} via PyTDC...")
 
@@ -77,28 +84,49 @@ class TDCCachingDataset(Dataset):
             raw_data = split_dict[split]
 
             logger.info(f"Processing and Caching {len(raw_data)} pairs...")
-            self.data = self._build_sample_list(raw_data)
-            torch.save(self.data, self.cache_file)
-            logger.info(f"Saved cache to {self.cache_file}")
+            samples, num_unique_drugs, num_unique_targets = self._build_sample_list(raw_data)
+            self.data = samples
+            self.num_unique_drugs = num_unique_drugs
+            self.num_unique_targets = num_unique_targets
 
-    def _build_sample_list(self, df) -> list:
+            torch.save(
+                {
+                    "samples": samples,
+                    "num_unique_drugs": num_unique_drugs,
+                    "num_unique_targets": num_unique_targets,
+                },
+                self.cache_file,
+            )
+            logger.info(
+                f"Saved cache to {self.cache_file} "
+                f"({num_unique_drugs} unique drugs, {num_unique_targets} unique targets)"
+            )
+
+    def _build_sample_list(self, df) -> tuple[list, int, int]:
         """Preprocess raw DataFrame rows into model-ready sample dicts.
 
         Each sample contains:
         - ``drug``: PyG molecular graph (RDKit atom/bond features).
         - ``target_ids`` / ``target_mask``: ESM token tensors.
         - ``label``: Affinity value as FloatTensor.
-        - ``drug_node_id`` / ``target_node_id``: Deterministic integer IDs for
-          Teacher transductive lookup (MD5 hash modulo large prime).
-        """
-        import hashlib
+        - ``drug_index`` / ``target_index``: Sequential node indices (0..N-1) for
+          Teacher transductive lookup. Index i corresponds to the i-th unique
+          drug/protein in this split, matching the node ordering in DD/PP graphs.
 
+        Returns:
+            (samples, num_unique_drugs, num_unique_targets)
+        """
         from tqdm import tqdm
 
         from ugtsdti.data.transforms.chemistry import smiles_to_graph
         from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
-        _HASH_MODULUS = 100_003  # large prime; collision rate ~0.01% on DAVIS
+        # Build sequential index mappings from unique drugs/proteins in this split.
+        # dict.fromkeys preserves insertion order and deduplicates.
+        unique_smiles = list(dict.fromkeys(df["Drug"].tolist()))
+        unique_fasta = list(dict.fromkeys(df["Target"].tolist()))
+        smiles_to_idx = {s: i for i, s in enumerate(unique_smiles)}
+        fasta_to_idx = {f: i for i, f in enumerate(unique_fasta)}
 
         samples = []
         tokenizer = ESMSequenceTokenizer()
@@ -116,9 +144,11 @@ class TDCCachingDataset(Dataset):
             # 2. FASTA → ESM token tensors
             target_tokens = tokenizer.encode(target_fasta)
 
-            # 3. Deterministic node IDs for Teacher transductive lookup
-            drug_node_id = int(hashlib.md5(drug_smiles.encode()).hexdigest(), 16) % _HASH_MODULUS
-            target_node_id = int(hashlib.md5(target_fasta.encode()).hexdigest(), 16) % _HASH_MODULUS
+            # 3. Sequential node IDs for Teacher transductive lookup.
+            #    drug_index i = position of this drug in the unique drug list (0..N-1).
+            #    Matches node ordering in DD Graph built from unique_smiles.
+            drug_node_id = smiles_to_idx[drug_smiles]
+            target_node_id = fasta_to_idx[target_fasta]
 
             samples.append(
                 {
@@ -131,7 +161,7 @@ class TDCCachingDataset(Dataset):
                 }
             )
 
-        return samples
+        return samples, len(unique_smiles), len(unique_fasta)
 
     def __len__(self):
         return len(self.data)
