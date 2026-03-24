@@ -65,28 +65,25 @@ class Trainer:
         self.current_epoch = 0
 
     def fit(self, train_loader, val_loader=None):
-        logger.info(f"Starting Training for {self.epochs} epochs.")
+        logger.info(f"Starting training for {self.epochs} epochs.")
 
         for epoch in range(1, self.epochs + 1):
             self.current_epoch = epoch
 
-            # 1. Train Pulse
             train_metrics = self._train_epoch(train_loader)
 
-            # 2. Validation Pulse
             val_metrics = {}
             if val_loader is not None and epoch % self.val_check_interval == 0:
                 val_metrics = self.evaluate(val_loader, prefix="val")
                 self._check_early_stopping(val_metrics)
 
-            # 3. Log to WandB
             self._log_metrics(train_metrics, val_metrics)
 
             if self.no_improve_epochs >= self.patience:
-                logger.info(f"Early Stopping triggered at epoch {epoch}!")
+                logger.info(f"Early stopping at epoch {epoch} (no improvement for {self.patience} epochs).")
                 break
 
-        logger.info(f"Training Complete. Best Validation Metric: {self.best_metric:.4f}")
+        logger.info(f"Training complete. Best val/auroc: {self.best_metric:.4f}")
         return self.best_metric
 
     def _train_epoch(self, loader) -> Dict[str, float]:
@@ -97,12 +94,11 @@ class Trainer:
         for batch in pbar:
             batch = batch_to_device(batch, self.device)
             y_true = batch.pop("label").float()
-            inputs = batch
 
             self.optimizer.zero_grad()
-            y_prob_dict = self.model(inputs)
+            model_output = self.model(batch)
 
-            loss = self.loss_fn(y_prob_dict, y_true)
+            loss = self.loss_fn(model_output, y_true)
             loss.backward()
 
             if self.grad_clip > 0:
@@ -129,15 +125,12 @@ class Trainer:
         for batch in pbar:
             batch = batch_to_device(batch, self.device)
             y_true = batch.pop("label").float()
-            inputs = batch
 
-            y_prob_dict = self.model(inputs)
-            loss = self.loss_fn(y_prob_dict, y_true)
+            model_output = self.model(batch)
+            loss = self.loss_fn(model_output, y_true)
 
             total_loss += loss.item() * y_true.size(0)
-
-            # For AUROC/metrics, we specifically extract the main predictions
-            all_preds.append(y_prob_dict["logits"].detach().cpu().numpy())
+            all_preds.append(model_output["logits"].detach().cpu().numpy())
             all_trues.append(y_true.cpu().numpy())
 
         y_score_full = np.concatenate(all_preds)

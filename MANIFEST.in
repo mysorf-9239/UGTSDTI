@@ -2,8 +2,8 @@ include LICENSE
 include README.md
 include Makefile
 
-recursive-include configs *.yaml *.yml
-recursive-include docs **
-recursive-include scripts *.sh *.py
-recursive-include examples *.sh *.py
-recursive-include conda-recipes *.yaml *.yml
+recursive - include configs *.yaml *.yml
+recursive - include docs **
+recursive - include scripts *.sh *.py
+recursive - include examples *.sh *.py
+recursive - include conda - recipes *.yaml *.yml

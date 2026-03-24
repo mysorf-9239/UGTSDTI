@@ -4,14 +4,14 @@ train:
     name: "DAVIS"
     split: "train"
     split_type: "cold_split"
-    frac: [0.8, 0.1, 0.1]
+    frac: [ 0.8, 0.1, 0.1 ]
     seed: 42
 
 val:
   name: "tdc_caching_dataset"
   params:
     name: "DAVIS"
-    split: "valid"
+    split: "valid"              # "train" / "valid" / "test"
     split_type: "cold_split"
-    frac: [0.8, 0.1, 0.1]
+    frac: [ 0.8, 0.1, 0.1 ]
     seed: 42

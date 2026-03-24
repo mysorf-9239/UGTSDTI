@@ -7,15 +7,19 @@
 ## Abstract
 
 Drug-Target Interaction (DTI) prediction is a critical step in early-stage drug discovery.
-A key challenge is the **Cold-Start Problem**: models trained on known drug-protein pairs fail to generalize to entirely unseen drugs or targets (S2–S4 splits).
+A key challenge is the **Cold-Start Problem**: models trained on known drug-protein pairs fail to generalize to entirely
+unseen drugs or targets (S2–S4 splits).
 
 UGTSDTI addresses this by combining two complementary encoders via an uncertainty-aware fusion gate (**PairGate**):
 
-- **Teacher** (graph-based, transductive): learns from global Drug-Drug and Protein-Protein similarity graphs. Strong on warm-start (S1), degrades on cold-start because new nodes have no graph context.
+- **Teacher** (graph-based, transductive): learns from global Drug-Drug and Protein-Protein similarity graphs. Strong on
+  warm-start (S1), degrades on cold-start because new nodes have no graph context.
 - **Student** (sequence-based, inductive): encodes directly from SMILES/FASTA. Generalizes to unseen molecules.
-- **PairGate**: estimates epistemic uncertainty of each branch via MC-Dropout and dynamically weights their contributions — when the Teacher is uncertain (cold-start), the Student is trusted more.
+- **PairGate**: estimates epistemic uncertainty of each branch via MC-Dropout and dynamically weights their
+  contributions — when the Teacher is uncertain (cold-start), the Student is trusted more.
 
-The core novelty is this adaptive, uncertainty-driven fusion: most SOTA DTI models commit to one encoder type and do not handle the warm/cold transition automatically.
+The core novelty is this adaptive, uncertainty-driven fusion: most SOTA DTI models commit to one encoder type and do not
+handle the warm/cold transition automatically.
 
 ---
 
@@ -23,14 +27,16 @@ The core novelty is this adaptive, uncertainty-driven fusion: most SOTA DTI mode
 
 Standard DTI benchmarks define four evaluation scenarios based on whether drugs and targets appeared during training:
 
-| Scenario | Drug in train | Target in train | Difficulty |
-|----------|:---:|:---:|------------|
-| **S1** | ✓ | ✓ | Easy — warm start |
-| **S2** | ✗ | ✓ | Medium — cold drug |
-| **S3** | ✓ | ✗ | Medium — cold target |
-| **S4** | ✗ | ✗ | Hard — fully cold, most realistic |
+| Scenario | Drug in train | Target in train | Difficulty                        |
+|----------|:-------------:|:---------------:|-----------------------------------|
+| **S1**   |       ✓       |        ✓        | Easy — warm start                 |
+| **S2**   |       ✗       |        ✓        | Medium — cold drug                |
+| **S3**   |       ✓       |        ✗        | Medium — cold target              |
+| **S4**   |       ✗       |        ✗        | Hard — fully cold, most realistic |
 
-Graph-based (transductive) models excel at S1 but collapse at S4 because new nodes have no embedding in the graph. Sequence-based (inductive) models generalize better but underperform at S1 where graph context is available. UGTSDTI aims to handle all four scenarios with a single adaptive model.
+Graph-based (transductive) models excel at S1 but collapse at S4 because new nodes have no embedding in the graph.
+Sequence-based (inductive) models generalize better but underperform at S1 where graph context is available. UGTSDTI
+aims to handle all four scenarios with a single adaptive model.
 
 ---
 
@@ -76,7 +82,8 @@ flowchart LR
 
 ### PairGate Fusion
 
-Epistemic uncertainty is estimated via **Monte Carlo Dropout**: the model runs `N` stochastic forward passes with dropout active and computes the variance of predictions across passes:
+Epistemic uncertainty is estimated via **Monte Carlo Dropout**: the model runs `N` stochastic forward passes with
+dropout active and computes the variance of predictions across passes:
 
 ```
 var_s = Var({logit_s^(1), ..., logit_s^(N)})
@@ -90,7 +97,8 @@ The gate MLP maps the uncertainty pair to a scalar weight `α ∈ (0, 1)`:
 ŷ = α · logit_t + (1 − α) · logit_s
 ```
 
-When the Teacher is uncertain (e.g., cold-start node absent from graph), `var_t` is high → `α → 0` → Student dominates. When the Teacher is confident (warm-start), `α → 1` → Teacher dominates.
+When the Teacher is uncertain (e.g., cold-start node absent from graph), `var_t` is high → `α → 0` → Student dominates.
+When the Teacher is confident (warm-start), `α → 1` → Teacher dominates.
 
 ### Training Objective
 
@@ -105,7 +113,8 @@ where:
   β         = alpha hyperparameter ∈ [0, 1]
 ```
 
-Note: `β` (KD weight) and `α` (gate weight) are independent — `β` is a fixed training hyperparameter, while `α` is computed dynamically per sample from uncertainty estimates.
+Note: `β` (KD weight) and `α` (gate weight) are independent — `β` is a fixed training hyperparameter, while `α` is
+computed dynamically per sample from uncertainty estimates.
 
 ---
 
@@ -125,7 +134,8 @@ flowchart TD
     E --> J["PyG DataLoader → Trainer"]
 ```
 
-Data is fetched automatically via [PyTDC](https://tdcommons.ai/) and cached to `data/cache/` as `.pt` files after the first run. Subsequent runs load directly from cache.
+Data is fetched automatically via [PyTDC](https://tdcommons.ai/) and cached to `data/cache/` as `.pt` files after the
+first run. Subsequent runs load directly from cache.
 
 ---
 
@@ -139,7 +149,8 @@ conda activate ugtsdti
 pip install -e .
 ```
 
-**Stack:** Python 3.10 · PyTorch 2.1+ · PyTorch Geometric · Hydra-core · WandB · PyTDC · RDKit · HuggingFace Transformers · Loguru
+**Stack:** Python 3.10 · PyTorch 2.1+ · PyTorch Geometric · Hydra-core · WandB · PyTDC · RDKit · HuggingFace
+Transformers · Loguru
 
 ---
 
@@ -169,23 +180,23 @@ bash scripts/run_baselines.sh
 
 ## Datasets
 
-| Dataset | Affinity type | Binarization threshold | Splits |
-|---------|--------------|----------------------|--------|
-| DAVIS | Kd (nM) | pKd ≥ 7.0 | S1, S4 |
-| KIBA | Composite KIBA score | — | S1, S4 |
-| BindingDB | Kd (nM) | pKd ≥ 7.0 | S1 |
+| Dataset   | Affinity type        | Binarization threshold | Splits |
+|-----------|----------------------|------------------------|--------|
+| DAVIS     | Kd (nM)              | pKd ≥ 7.0              | S1, S4 |
+| KIBA      | Composite KIBA score | —                      | S1, S4 |
+| BindingDB | Kd (nM)              | pKd ≥ 7.0              | S1     |
 
 ---
 
 ## Evaluation Metrics
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| AUROC | Classification | Area under ROC curve |
-| AUPRC | Classification | Area under Precision-Recall curve |
-| F1 | Classification | Binary F1 at threshold |
-| MSE | Regression | Mean squared error on raw affinity values |
-| CI | Ranking | Concordance Index — fraction of correctly ordered pairs |
+| Metric | Type           | Description                                             |
+|--------|----------------|---------------------------------------------------------|
+| AUROC  | Classification | Area under ROC curve                                    |
+| AUPRC  | Classification | Area under Precision-Recall curve                       |
+| F1     | Classification | Binary F1 at threshold                                  |
+| MSE    | Regression     | Mean squared error on raw affinity values               |
+| CI     | Ranking        | Concordance Index — fraction of correctly ordered pairs |
 
 ---
 
@@ -251,11 +262,11 @@ UGTSDTI/
 
 ```bibtex
 @misc{ugtsdti2026,
-  title        = {UGTSDTI: Uncertainty-Gated Teacher--Student Learning for
-                  Drug--Target Interaction Prediction},
-  author       = {},
-  year         = {2026},
-  note         = {Work in progress}
+    title = {UGTSDTI: Uncertainty-Gated Teacher--Student Learning for
+ Drug--Target Interaction Prediction},
+    author = {},
+    year = {2026},
+    note = {Work in progress}
 }
 ```
 

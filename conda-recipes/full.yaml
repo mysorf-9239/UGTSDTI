@@ -16,18 +16,18 @@ dependencies:
   - numpy
   - tqdm
   - pip:
-    - loguru
-    - hydra-core>=1.3.2
-    - wandb
-    - rdkit-pypi
-    - pre-commit
-    - black
-    - isort
-    - flake8
-    - pytest
-    - build
-    - mypy
-    - ruff
-    - PyTDC
-    - transformers
-    - hydra-optuna-sweeper
+      - loguru
+      - hydra-core>=1.3.2
+      - wandb
+      - rdkit-pypi
+      - pre-commit
+      - black
+      - isort
+      - flake8
+      - pytest
+      - build
+      - mypy
+      - ruff
+      - PyTDC
+      - transformers
+      - hydra-optuna-sweeper

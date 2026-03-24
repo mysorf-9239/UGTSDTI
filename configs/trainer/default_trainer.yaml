@@ -4,6 +4,9 @@ params:
   patience: 15
   val_check_interval: 1
   grad_clip: 1.0
+  lr: 0.001
+  batch_size: 32
+  num_workers: 0
   output_dir: "./outputs/checkpoints"
 loss:
   name: "bce_with_logits"

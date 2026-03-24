@@ -15,11 +15,29 @@ except ImportError:
 
 @DATASETS.register("tdc_caching_dataset")
 class TDCCachingDataset(Dataset):
-    """
-    SOTA Dataset for DTI prediction.
-    - Integrates with Therapeutics Data Commons (PyTDC) for standardized benchmarks.
-    - S1-S4 splits via TDC's native split functions.
+    """Dataset for DTI prediction backed by Therapeutics Data Commons (PyTDC).
+
+    - Integrates with PyTDC for standardized benchmarks (DAVIS, KIBA, BindingDB).
+    - S1-S4 cold-start splits via TDC's native ``get_split()`` mechanism.
     - Implements disk caching (.pt) to avoid re-computing RDKit/ESM features every run.
+
+    Negative Sampling Policy
+    ------------------------
+    DAVIS (and most PyTDC DTI datasets) contains **only positive pairs** — there is
+    no negative sampling applied here, and none is needed for standard benchmarking.
+
+    Split-First Invariant
+    ---------------------
+    If negative sampling is ever added in the future, it **MUST** occur *per-split*
+    (i.e., after ``dataset.get_split()`` returns the train/valid/test subsets).
+    Global negative sampling before the split would cause data leakage between
+    train, validation, and test sets, invalidating all metrics.
+
+    Correct order::
+
+        split_dict = dataset.get_split(...)   # split first
+        for split_name, split_df in split_dict.items():
+            split_df = add_negatives(split_df)  # then sample negatives per split
     """
 
     def __init__(

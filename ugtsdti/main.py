@@ -30,8 +30,8 @@ def build_experiment_components(cfg: DictConfig):
     train_dataset = DATASETS.build(cfg.data.train)
     val_dataset = DATASETS.build(cfg.data.val)
 
-    batch_size = cfg.trainer.get("batch_size", 32)
-    num_workers = cfg.trainer.get("num_workers", 0)
+    batch_size = cfg.trainer.params.get("batch_size", 32)
+    num_workers = cfg.trainer.params.get("num_workers", 0)
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=num_workers
