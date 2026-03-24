@@ -4,21 +4,25 @@ train:
     name: "DAVIS"
     split: "train"
     split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    column_name: "Target"
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s3"
 
 val:
   name: "tdc_caching_dataset"
   params:
     name: "DAVIS"
-    split: "valid"              # "train" / "valid" / "test"
+    split: "valid"
     split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    column_name: "Target"
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s3"
 
 test:
   name: "tdc_caching_dataset"
@@ -26,7 +30,9 @@ test:
     name: "DAVIS"
     split: "test"
     split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    column_name: "Target"
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s3"

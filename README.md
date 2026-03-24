@@ -166,21 +166,41 @@ Transformers · Loguru
 Configuration is managed via [Hydra](https://hydra.cc/). All parameters can be overridden at the command line.
 
 ```bash
-# Student-only baseline
-conda run -n ugtsdti python -m ugtsdti.main model=_.baseline._ data=tdc_davis
+# Student-only baseline on S1
+conda run -n ugtsdti python -m ugtsdti.main model=_.baseline._ data=tdc_davis_s1
 
-# Teacher-only baseline (GCN)
-conda run -n ugtsdti python -m ugtsdti.main model=gcn._._ data=tdc_davis
+# Teacher-only baseline (GCN) on S2
+conda run -n ugtsdti python -m ugtsdti.main model=gcn._._ data=tdc_davis_s2
 
-# Hybrid: GCN teacher + baseline student + UG fusion (BCE loss)
-conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis
+# Hybrid: GCN teacher + baseline student + UG fusion (BCE loss) on S4
+conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis_s4
 
 # Hybrid with Knowledge Distillation loss
-conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis \
+conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis_s4 \
     trainer.loss.name=kd trainer.loss.alpha=0.5
 
 # Smoke test all combos (2 epochs, WandB disabled)
 WANDB_MODE=disabled bash scripts/smoke.sh
+```
+
+## Benchmark Protocols
+
+The repo now exposes explicit Hydra data configs for each evaluation scenario:
+
+| Scenario | Meaning | Hydra config |
+|----------|---------|--------------|
+| **S1** | warm-start / random split | `data=tdc_davis_s1` |
+| **S2** | cold drug | `data=tdc_davis_s2` |
+| **S3** | cold target | `data=tdc_davis_s3` |
+| **S4** | fully cold (PyTDC `cold_split` without column override) | `data=tdc_davis_s4` |
+
+Example:
+
+```bash
+conda run -n ugtsdti python -m ugtsdti.main \
+    model=gcn.baseline.ug \
+    data=tdc_davis_s3 \
+    trainer.loss.name=kd
 ```
 
 ---

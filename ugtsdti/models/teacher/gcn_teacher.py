@@ -67,6 +67,8 @@ class GCNTeacher(nn.Module):
 
         self.relu = nn.ReLU()
         self.drop = nn.Dropout(p=dropout)
+        self.unknown_drug_emb = nn.Parameter(torch.zeros(hidden_dim))
+        self.unknown_protein_emb = nn.Parameter(torch.zeros(hidden_dim))
 
         # Predictor MLP
         self.predictor = nn.Sequential(
@@ -79,6 +81,17 @@ class GCNTeacher(nn.Module):
         # Graphs are set via set_graphs()
         self.dd_graph: Data | None = None
         self.pp_graph: Data | None = None
+
+    def _lookup_with_unknown(
+        self, embeddings: torch.Tensor, indices: torch.Tensor, unknown_embedding: torch.Tensor
+    ) -> torch.Tensor:
+        """Lookup graph embeddings, falling back to a learned UNK embedding."""
+        output = unknown_embedding.unsqueeze(0).expand(indices.size(0), -1)
+        known_mask = (indices >= 0) & (indices < embeddings.size(0))
+        if known_mask.any():
+            output = output.clone()
+            output[known_mask] = embeddings[indices[known_mask]]
+        return output
 
     def set_graphs(self, dd_graph: Data, pp_graph: Data) -> None:
         """Store global DD and PP graphs for use in forward().
@@ -135,8 +148,8 @@ class GCNTeacher(nn.Module):
         protein_embs = self._encode_protein()  # (n_proteins, H)
 
         # Lookup by index
-        drug_emb = drug_embs[drug_idx]  # (B, H)
-        prot_emb = protein_embs[target_idx]  # (B, H)
+        drug_emb = self._lookup_with_unknown(drug_embs, drug_idx, self.unknown_drug_emb)  # (B, H)
+        prot_emb = self._lookup_with_unknown(protein_embs, target_idx, self.unknown_protein_emb)  # (B, H)
 
         # Concatenate and predict
         pair_emb = torch.cat([drug_emb, prot_emb], dim=1)  # (B, 2H)

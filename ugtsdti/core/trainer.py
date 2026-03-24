@@ -83,6 +83,9 @@ class Trainer:
                 logger.info(f"Early stopping at epoch {epoch} (no improvement for {self.patience} epochs).")
                 break
 
+        if val_loader is None and not os.path.exists(self.best_model_path):
+            self._save_checkpoint()
+
         logger.info(f"Training complete. Best val/auroc: {self.best_metric:.4f}")
         return self.best_metric
 
@@ -162,6 +165,17 @@ class Trainer:
 
     def _save_checkpoint(self):
         torch.save(self.model.state_dict(), self.best_model_path)
+
+    def load_best_checkpoint(self) -> bool:
+        """Load the best checkpoint if it exists."""
+        if not os.path.exists(self.best_model_path):
+            logger.warning(f"Best checkpoint not found at {self.best_model_path}")
+            return False
+
+        state_dict = torch.load(self.best_model_path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(state_dict)
+        logger.info(f"Loaded best checkpoint from {self.best_model_path}")
+        return True
 
     def _log_metrics(self, train_metrics, val_metrics):
         if self.run is not None:

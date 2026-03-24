@@ -48,6 +48,11 @@ class HybridDTIModel(nn.Module):
         epistemic_var = mc_logits.var(dim=-1).view(-1)  # [B]
         return mean_logit, epistemic_var
 
+    def _estimate_uncertainty(self, branch: nn.Module, batch: dict, mc_samples: int) -> torch.Tensor:
+        """Estimate epistemic variance for gating while keeping train-time logits differentiable."""
+        _, epistemic_var = self._mc_forward(branch, batch, mc_samples)
+        return epistemic_var
+
     def forward(self, batch: dict) -> dict:
         """Route forward pass based on available sub-models.
 
@@ -61,16 +66,34 @@ class HybridDTIModel(nn.Module):
             if mc_samples > 0 and not self.training:
                 student_logits, student_var = self._mc_forward(self.student, batch, mc_samples)
                 teacher_logits, teacher_var = self._mc_forward(self.teacher, batch, mc_samples)
-                fused_logits = self.fusion(student_logits, teacher_logits, student_var, teacher_var)
+                fused_logits, gate_alpha = self.fusion(
+                    student_logits,
+                    teacher_logits,
+                    student_var,
+                    teacher_var,
+                    return_alpha=True,
+                )
             else:
                 student_logits = self.student(batch)["logits"]
                 teacher_logits = self.teacher(batch)["logits"]
-                fused_logits = self.fusion(student_logits, teacher_logits)
+                if mc_samples > 0 and getattr(self.fusion, "use_uncertainty_in_train", False):
+                    student_var = self._estimate_uncertainty(self.student, batch, mc_samples)
+                    teacher_var = self._estimate_uncertainty(self.teacher, batch, mc_samples)
+                    fused_logits, gate_alpha = self.fusion(
+                        student_logits,
+                        teacher_logits,
+                        student_var,
+                        teacher_var,
+                        return_alpha=True,
+                    )
+                else:
+                    fused_logits, gate_alpha = self.fusion(student_logits, teacher_logits, return_alpha=True)
 
             return {
                 "logits": fused_logits,
                 "student_logits": student_logits,
                 "teacher_logits": teacher_logits,
+                "gate_alpha": gate_alpha,
             }
 
         elif self.student is not None:

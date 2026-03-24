@@ -46,6 +46,7 @@ class UncertaintyGatedFusion(nn.Module):
     def __init__(self, gate_hidden: int, mc_samples: int = 5, input_dim: int = 1):
         super().__init__()
         self.mc_samples = mc_samples
+        self.use_uncertainty_in_train = mc_samples > 0
 
         # Gate MLP: (var_s, var_t) → α ∈ (0, 1)
         self.gate_mlp = nn.Sequential(
@@ -61,7 +62,8 @@ class UncertaintyGatedFusion(nn.Module):
         teacher_logits: torch.Tensor,
         student_var: torch.Tensor | None = None,
         teacher_var: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+        return_alpha: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Fuse Student and Teacher predictions via uncertainty-gated blending.
 
         Args:
@@ -75,11 +77,14 @@ class UncertaintyGatedFusion(nn.Module):
         """
         if student_var is None or teacher_var is None:
             # Fallback: equal-weight average (no uncertainty information)
-            return (0.5 * student_logits + 0.5 * teacher_logits).view(-1)
+            alpha = torch.full_like(student_logits.view(-1), 0.5)
+            fused = (0.5 * student_logits + 0.5 * teacher_logits).view(-1)
+            return (fused, alpha) if return_alpha else fused
 
         # Stack uncertainty pair → gate MLP → α
         uncertainty_pair = torch.stack([student_var, teacher_var], dim=-1)  # (B, 2)
         alpha = self.gate_mlp(uncertainty_pair).view(-1)  # (B,), α ∈ (0, 1)
 
         fused = alpha * teacher_logits + (1.0 - alpha) * student_logits
-        return fused.view(-1)  # ensure (B,) even when B=1
+        fused = fused.view(-1)  # ensure (B,) even when B=1
+        return (fused, alpha) if return_alpha else fused

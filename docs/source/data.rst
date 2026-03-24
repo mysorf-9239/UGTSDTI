@@ -11,7 +11,7 @@ cache, avoiding re-running RDKit and ESM tokenisation.
 .. mermaid::
 
     flowchart TD
-        A["PyTDC API\nDAVIS / KIBA / BindingDB"] --> B["Split\ncold_split → S4\nrandom_split → S1"]
+        A["PyTDC API\nDAVIS / KIBA / BindingDB"] --> B["Split\nrandom_split → S1\ncold_split(Drug) → S2\ncold_split(Target) → S3\ncold_split(None) → S4"]
         B --> C["Negative Sampling\n(handled by PyTDC)"]
         C --> D{".pt cache exists?"}
         D -- Yes --> E["Load from data/cache/"]
@@ -57,8 +57,9 @@ recursively into a batched dict:
 | ``target_index`` | LongTensor  | [1]        | Teacher (transductive lookup)    |
 +------------------+-------------+------------+----------------------------------+
 
-``drug_index`` and ``target_index`` are deterministic MD5 hashes of SMILES/FASTA modulo
-100 003 (a large prime). Collision rate is ~0.01% on DAVIS (~68k pairs).
+``drug_index`` and ``target_index`` are shared train-based entity IDs for the teacher branch.
+Validation/test entities unseen in train are mapped to an explicit ``UNK`` slot so the
+teacher remains transductive while the student stays inductive.
 
 Molecular graph features
 ------------------------
@@ -100,13 +101,14 @@ Config reference
 
 .. code-block:: yaml
 
-    # configs/data/tdc_davis.yaml
+    # configs/data/tdc_davis_s2.yaml
     train:
       name: tdc_caching_dataset
       params:
         name: DAVIS
         split: train
-        split_type: random_split
+        split_type: cold_split
+        column_name: Drug
         cache_dir: ./data/cache
         seed: 42
 
@@ -115,6 +117,22 @@ Config reference
       params:
         name: DAVIS
         split: valid          # PyTDC key for validation split
-        split_type: random_split
+        split_type: cold_split
+        column_name: Drug
         cache_dir: ./data/cache
         seed: 42
+
+Benchmark scenarios
+-------------------
+
++------------+--------------------------------------+------------------+
+| Scenario   | Meaning                              | Hydra data config |
++============+======================================+==================+
+| ``S1``     | warm-start / random split            | ``tdc_davis_s1`` |
++------------+--------------------------------------+------------------+
+| ``S2``     | cold drug                            | ``tdc_davis_s2`` |
++------------+--------------------------------------+------------------+
+| ``S3``     | cold target                          | ``tdc_davis_s3`` |
++------------+--------------------------------------+------------------+
+| ``S4``     | fully cold via PyTDC global cold split | ``tdc_davis_s4`` |
++------------+--------------------------------------+------------------+

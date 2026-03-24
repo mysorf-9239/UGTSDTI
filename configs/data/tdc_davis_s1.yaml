@@ -3,30 +3,36 @@ train:
   params:
     name: "DAVIS"
     split: "train"
-    split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    split_type: "random_split"
+    column_name: null
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s1"
 
 val:
   name: "tdc_caching_dataset"
   params:
     name: "DAVIS"
-    split: "valid"              # "train" / "valid" / "test"
-    split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    split: "valid"
+    split_type: "random_split"
+    column_name: null
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s1"
 
 test:
   name: "tdc_caching_dataset"
   params:
     name: "DAVIS"
     split: "test"
-    split_type: "cold_split"
-    frac: [ 0.8, 0.1, 0.1 ]
+    split_type: "random_split"
+    column_name: null
+    frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
     affinity_threshold: 7.0
+    scenario_name: "s1"

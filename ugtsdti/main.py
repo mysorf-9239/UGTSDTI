@@ -29,6 +29,7 @@ def build_experiment_components(cfg: DictConfig):
 
     train_dataset = DATASETS.build(cfg.data.train)
     val_dataset = DATASETS.build(cfg.data.val)
+    test_dataset = DATASETS.build(cfg.data.test) if hasattr(cfg.data, "test") and cfg.data.test is not None else None
 
     batch_size = cfg.trainer.params.get("batch_size", 32)
     num_workers = cfg.trainer.params.get("num_workers", 0)
@@ -37,12 +38,34 @@ def build_experiment_components(cfg: DictConfig):
         train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=num_workers
     )
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = (
+        DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        if test_dataset is not None
+        else None
+    )
 
     logger.info("Building Model from config...")
-    model = MODELS.build(cfg.model)
+    model_cfg = OmegaConf.to_container(cfg.model, resolve=True)
+    _inject_dataset_aware_model_params(model_cfg, train_dataset)
+    model = MODELS.build(model_cfg)
     logger.info(f"Model instantiated:\n{model.__class__.__name__}")
 
-    return train_loader, val_loader, model
+    return train_loader, val_loader, test_loader, model
+
+
+def _inject_dataset_aware_model_params(model_cfg: dict, train_dataset) -> None:
+    """Fill model plugin params that depend on dataset cardinalities."""
+    params = model_cfg.get("params", {})
+    teacher_cfg = params.get("teacher_cfg")
+    if not teacher_cfg:
+        return
+
+    if teacher_cfg.get("name") == "baseline_teacher":
+        teacher_params = teacher_cfg.setdefault("params", {})
+        if getattr(train_dataset, "num_unique_drugs", None) is not None:
+            teacher_params["num_drugs"] = train_dataset.num_unique_drugs
+        if getattr(train_dataset, "num_unique_targets", None) is not None:
+            teacher_params["num_targets"] = train_dataset.num_unique_targets
 
 
 def _wire_teacher_graphs(model, train_dataset, cfg: DictConfig) -> None:
@@ -67,7 +90,9 @@ def _wire_teacher_graphs(model, train_dataset, cfg: DictConfig) -> None:
         return
 
     graph_cfg = cfg.get("trainer", {}).get("graph", {})
-    cache_path = graph_cfg.get("cache_path", "data/cache/similarity_graphs.pt")
+    cache_path = graph_cfg.get(
+        "cache_path", getattr(train_dataset, "graph_cache_path", "data/cache/similarity_graphs.pt")
+    )
 
     logger.info(f"Building DD/PP graphs for GCNTeacher ({len(unique_smiles)} drugs, {len(unique_fasta)} proteins)...")
     graphs = build_and_cache_graphs(unique_smiles, unique_fasta, cache_path=cache_path)
@@ -89,7 +114,7 @@ def main(cfg: DictConfig) -> None:
     logger.debug(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
 
     # 3. Build components from standard registries
-    train_loader, val_loader, model = build_experiment_components(cfg)
+    train_loader, val_loader, test_loader, model = build_experiment_components(cfg)
 
     # 3b. Wire GCNTeacher graphs if applicable
     train_dataset = train_loader.dataset
@@ -99,7 +124,7 @@ def main(cfg: DictConfig) -> None:
     trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer
     device = torch.device(trainer_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
 
-    loss_cfg = trainer_cfg.get("loss", {"name": "bce"})
+    loss_cfg = cfg.trainer.get("loss", trainer_cfg.get("loss", {"name": "bce"}))
     loss_fn = LOSSES.build(loss_cfg)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=trainer_cfg.get("lr", 1e-3))
@@ -115,6 +140,12 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("Handing off to Trainer...")
     trainer.fit(train_loader, val_loader)
+
+    if test_loader is not None:
+        trainer.load_best_checkpoint()
+        logger.info("Running final evaluation on test split...")
+        test_metrics = trainer.evaluate(test_loader, prefix="test")
+        trainer._log_metrics({}, test_metrics)
 
     logger.info("System bootstrap completed successfully.")
     if run is not None:

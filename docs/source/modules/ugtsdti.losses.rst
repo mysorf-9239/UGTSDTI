@@ -7,10 +7,10 @@ ugtsdti.losses package
    :show-inheritance:
    :member-order: bysource
 
-ugtsdti.losses.distillation module
-------------------------------------
+ugtsdti.losses.kd module
+------------------------
 
-.. automodule:: ugtsdti.losses.distillation
+.. automodule:: ugtsdti.losses.kd
    :members:
    :undoc-members:
    :show-inheritance:
