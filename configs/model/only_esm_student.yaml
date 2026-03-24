@@ -1,0 +1,10 @@
+name: "hybrid_dti"
+params:
+  student_cfg:
+    name: "esm_student"
+    params:
+      model_name: "facebook/esm2_t6_8M_UR50D"
+      hidden_dim: 128
+      freeze: true
+  teacher_cfg: null
+  fusion_cfg: null

@@ -1,12 +1,34 @@
 #!/bin/bash
-# run_experiments.sh — Ablation sweep across model configs using Hydra multirun
+# run_experiments.sh — Full ablation sweep via Hydra multirun.
+# Usage: bash scripts/run_experiments.sh
+#
+# Sweep matrix:
+#   models : only_student, only_teacher, only_teacher_gcn, hybrid_baseline, hybrid_gcn
+#   losses : bce_with_logits, kd_dual_loss
+#   splits : cold_split (S1 default via tdc_davis)
+#
+# Results are logged to WandB. Set WANDB_PROJECT before running.
+# Override epochs: EPOCHS=50 bash scripts/run_experiments.sh
+
+set -e
 cd "$(dirname "$0")/.." || exit 1
 
-echo "Running ablation sweep on UGTSDTI..."
+EPOCHS="${EPOCHS:-100}"
+DATA=tdc_davis
+TRAINER=default_trainer
 
+echo "=========================================="
+echo " UGTS-DTI Ablation Sweep"
+echo " epochs=$EPOCHS | data=$DATA"
+echo "=========================================="
+
+# Full ablation: all usable models x both losses
 conda run -n ugtsdti python -m ugtsdti.main -m \
-    data=tdc_davis \
-    model=hybrid_baseline,only_student,only_teacher \
-    trainer.params.epochs=2
+    data="$DATA" \
+    trainer="$TRAINER" \
+    trainer.params.epochs="$EPOCHS" \
+    model=only_student,only_teacher,only_teacher_gcn,hybrid_baseline,hybrid_gcn \
+    trainer.loss.name=bce_with_logits,kd_dual_loss
 
-echo "Experiments completed! Check WandB for results."
+echo ""
+echo "Sweep complete. Check WandB for results."
