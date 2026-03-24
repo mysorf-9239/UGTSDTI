@@ -3,8 +3,9 @@
 import os
 import sys
 
-# Insert the parent directory into the path so autodoc can find the `ugtsdti` package
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Allow autodoc to import the package from the repo checkout.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, REPO_ROOT)
 
 project = "UGTSDTI"
 copyright = "2026, Mysorf"
@@ -12,22 +13,51 @@ author = "Mysorf"
 
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.doctest",
-    "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.todo",
     "sphinx.ext.mathjax",
-    "sphinx.ext.githubpages",
     "sphinxcontrib.mermaid",
     "sphinx_copybutton",
     "sphinx_rtd_theme",
 ]
 
 templates_path = ["_templates"]
-exclude_patterns: list[str] = []
+exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
+
+# autodoc
+autodoc_member_order = "bysource"
+autodoc_mock_imports = [
+    "torch",
+    "torch_geometric",
+    "rdkit",
+    "tdc",
+    "transformers",
+    "loguru",
+    "wandb",
+    "hydra",
+    "omegaconf",
+    "tqdm",
+    "sklearn",
+    "numpy",
+]
+
+# napoleon
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_include_init_with_doc = True
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+
+# todo
+todo_include_todos = True
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+html_css_files = ["style.css"]
 
-autodoc_member_order = "bysource"
-napoleon_google_docstring = True
-napoleon_numpy_docstring = False
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "torch": ("https://pytorch.org/docs/stable", None),
+}

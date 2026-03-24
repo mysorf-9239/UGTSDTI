@@ -1,0 +1,18 @@
+/* UGTSDTI custom styles */
+
+/* Slightly wider content area */
+.wy-nav-content {
+    max-width: 1000px;
+}
+
+/* Mermaid diagram centering */
+.mermaid {
+    text-align: center;
+    margin: 1.5em 0;
+}
+
+/* Code block copy button spacing */
+.copybtn {
+    top: 0.5em;
+    right: 0.5em;
+}

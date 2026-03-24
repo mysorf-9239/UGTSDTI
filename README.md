@@ -265,6 +265,36 @@ UGTSDTI/
 
 ---
 
+## Documentation
+
+Full API reference and narrative guides are built with Sphinx.
+
+```bash
+# Install deps (once)
+pip install -r docs/requirements.txt
+
+# Live-reload server (auto-rebuilds on file save)
+cd docs
+sphinx-autobuild --watch ../ugtsdti --open-browser source build
+# → http://127.0.0.1:8000
+
+# One-shot HTML build
+make html
+# → docs/build/index.html
+```
+
+Or via Docker (no local install needed):
+
+```bash
+docker build --file docs/Dockerfile --tag ugtsdti-docs .
+docker run -it --rm -p 8000:8000 ugtsdti-docs
+# → http://localhost:8000
+```
+
+See [`docs/README.md`](docs/README.md) for details.
+
+---
+
 ## Citation
 
 ```bibtex
