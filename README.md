@@ -301,7 +301,7 @@ See [`docs/README.md`](docs/README.md) for details.
 @misc{ugtsdti2026,
     title = {UGTSDTI: Uncertainty-Gated Teacher--Student Learning for
  Drug--Target Interaction Prediction},
-    author = {},
+    author = {Mysorf},
     year = {2026},
     note = {Work in progress}
 }
