@@ -61,6 +61,6 @@ class PairGateFusion(nn.Module):
 
         # uncertainty_pair: [B, 2]
         uncertainty_pair = torch.stack([student_var, teacher_var], dim=-1)
-        gate_weight = self.gate_mlp(uncertainty_pair).squeeze(-1)  # α ∈ (0, 1)
+        gate_weight = self.gate_mlp(uncertainty_pair)  # (B, 1), α ∈ (0, 1)
 
         return gate_weight * teacher_logits + (1.0 - gate_weight) * student_logits

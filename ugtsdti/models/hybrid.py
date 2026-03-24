@@ -21,11 +21,11 @@ class HybridDTIModel(nn.Module):
         # Determine training mode based on instantiated components
         self.is_hybrid = (self.student is not None) and (self.teacher is not None) and (self.fusion is not None)
 
-    def _estimate_epistemic_uncertainty(self, branch: nn.Module, batch: dict, mc_samples: int = 5) -> torch.Tensor:
-        """Estimate epistemic uncertainty via Monte Carlo Dropout.
+    def _mc_forward(self, branch: nn.Module, batch: dict, mc_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run N stochastic MC-Dropout passes and return mean logit and epistemic variance.
 
-        Runs ``mc_samples`` stochastic forward passes with dropout active and
-        returns the per-sample predictive variance across passes.
+        Both ``mean_logit`` and ``epistemic_var`` are derived from the same ``mc_logits``
+        tensor, ensuring mathematical consistency for PairGate fusion.
 
         Args:
             branch: Student or Teacher sub-model (must have Dropout layers).
@@ -33,16 +33,18 @@ class HybridDTIModel(nn.Module):
             mc_samples: Number of stochastic forward passes.
 
         Returns:
-            Predictive variance tensor of shape ``(B,)``.
+            Tuple of ``(mean_logit, epistemic_var)`` where ``mean_logit`` has shape
+            ``(B, 1)`` and ``epistemic_var`` has shape ``(B,)``.
         """
         training_mode = branch.training
         branch.train()  # activate dropout
         with torch.no_grad():
-            mc_logits = [branch(batch)["logits"] for _ in range(mc_samples)]
-        epistemic_var = torch.stack(mc_logits, dim=-1).var(dim=-1)
+            mc_logits = torch.stack([branch(batch)["logits"] for _ in range(mc_samples)], dim=-1)  # [B, 1, N]
         if not training_mode:
             branch.eval()
-        return epistemic_var
+        mean_logit = mc_logits.mean(dim=-1)  # [B, 1]
+        epistemic_var = mc_logits.var(dim=-1).squeeze(-1)  # [B]
+        return mean_logit, epistemic_var
 
     def forward(self, batch: dict) -> dict:
         """Route forward pass based on available sub-models.
@@ -53,19 +55,14 @@ class HybridDTIModel(nn.Module):
         - ``hybrid``: both branches fused via PairGate.
         """
         if self.is_hybrid:
-            student_logits = self.student(batch)["logits"]
-            teacher_logits = self.teacher(batch)["logits"]
-
-            if hasattr(self.fusion, "mc_samples") and self.fusion.mc_samples > 0:
-                student_uncertainty = self._estimate_epistemic_uncertainty(self.student, batch, self.fusion.mc_samples)
-                teacher_uncertainty = self._estimate_epistemic_uncertainty(self.teacher, batch, self.fusion.mc_samples)
-                fused_logits = self.fusion(
-                    student_logits,
-                    teacher_logits,
-                    student_var=student_uncertainty,
-                    teacher_var=teacher_uncertainty,
-                )
+            mc_samples = getattr(self.fusion, "mc_samples", 0)
+            if mc_samples > 0 and not self.training:
+                student_logits, student_var = self._mc_forward(self.student, batch, mc_samples)
+                teacher_logits, teacher_var = self._mc_forward(self.teacher, batch, mc_samples)
+                fused_logits = self.fusion(student_logits, teacher_logits, student_var, teacher_var)
             else:
+                student_logits = self.student(batch)["logits"]
+                teacher_logits = self.teacher(batch)["logits"]
                 fused_logits = self.fusion(student_logits, teacher_logits)
 
             return {

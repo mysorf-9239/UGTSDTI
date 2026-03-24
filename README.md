@@ -53,17 +53,17 @@ flowchart LR
 
     subgraph Student["Student Branch (Inductive)"]
         C["Sequence Encoder\nSMILES → PyG Graph\nFASTA → ESM Tokens"]
-        D["logit_s"]
+        D["logit_s (train) / ŷ_s (eval)"]
     end
 
     subgraph Teacher["Teacher Branch (Transductive)"]
         E["GNN Encoder\nDD + PP Similarity Graph\n(GAT / GCN)"]
-        F["logit_t"]
+        F["logit_t (train) / ŷ_t (eval)"]
     end
 
-    subgraph MC["MC-Dropout (N forward passes)"]
-        G["var_s = Var(logit_s^1..N)"]
-        H["var_t = Var(logit_t^1..N)"]
+    subgraph MC["MC-Dropout (eval mode, N forward passes)"]
+        G["ŷ_s = Mean(logit_s^1..N)\nvar_s = Var(logit_s^1..N)"]
+        H["ŷ_t = Mean(logit_t^1..N)\nvar_t = Var(logit_t^1..N)"]
     end
 
     subgraph Fusion["PairGate Fusion"]
@@ -82,19 +82,26 @@ flowchart LR
 
 ### PairGate Fusion
 
-Epistemic uncertainty is estimated via **Monte Carlo Dropout**: the model runs `N` stochastic forward passes with
-dropout active and computes the variance of predictions across passes:
+Epistemic uncertainty is estimated via **Monte Carlo Dropout**: at eval time, the model runs `N` stochastic forward
+passes with dropout active and computes both the mean prediction and variance across passes:
 
 ```
-var_s = Var({logit_s^(1), ..., logit_s^(N)})
+ŷ_s = Mean({logit_s^(1), ..., logit_s^(N)})   ← prediction logit (eval mode)
+var_s = Var({logit_s^(1), ..., logit_s^(N)})   ← epistemic uncertainty
+
+ŷ_t = Mean({logit_t^(1), ..., logit_t^(N)})
 var_t = Var({logit_t^(1), ..., logit_t^(N)})
 ```
+
+Both `ŷ` and `var` come from the **same** `mc_logits` tensor — this is the key correctness property
+(Gal & Ghahramani, 2016). During training, a single forward pass is used (dropout active naturally via `model.train()`),
+no extra MC passes are run.
 
 The gate MLP maps the uncertainty pair to a scalar weight `α ∈ (0, 1)`:
 
 ```
 α = σ(MLP([var_s, var_t]))
-ŷ = α · logit_t + (1 − α) · logit_s
+ŷ = α · ŷ_t + (1 − α) · ŷ_s
 ```
 
 When the Teacher is uncertain (e.g., cold-start node absent from graph), `var_t` is high → `α → 0` → Student dominates.
