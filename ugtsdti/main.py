@@ -45,7 +45,43 @@ def build_experiment_components(cfg: DictConfig):
     return train_loader, val_loader, model
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="default")
+def _wire_teacher_graphs(model, train_dataset, cfg: DictConfig) -> None:
+    """If model has a GCNTeacher, build DD/PP graphs from dataset and call set_graphs().
+
+    This must be called after model and dataset are built, before training starts.
+    """
+    from ugtsdti.models.teacher.gcn_teacher import GCNTeacher
+
+    # Resolve the teacher — works for HybridDTIModel and standalone GCNTeacher
+    teacher = getattr(model, "teacher", None) or (model if isinstance(model, GCNTeacher) else None)
+    if teacher is None or not isinstance(teacher, GCNTeacher):
+        return
+
+    from ugtsdti.data.graph_builder import build_and_cache_graphs
+
+    unique_smiles = getattr(train_dataset, "unique_smiles", None)
+    unique_fasta = getattr(train_dataset, "unique_fasta", None)
+
+    if unique_smiles is None or unique_fasta is None:
+        logger.warning(
+            "train_dataset does not expose unique_smiles/unique_fasta. "
+            "Cannot build GCNTeacher graphs."
+        )
+        return
+
+    graph_cfg = cfg.get("trainer", {}).get("graph", {})
+    cache_path = graph_cfg.get("cache_path", "data/cache/similarity_graphs.pt")
+
+    logger.info(
+        f"Building DD/PP graphs for GCNTeacher "
+        f"({len(unique_smiles)} drugs, {len(unique_fasta)} proteins)..."
+    )
+    graphs = build_and_cache_graphs(unique_smiles, unique_fasta, cache_path=cache_path)
+    teacher.set_graphs(graphs["dd"], graphs["pp"])
+    logger.info("GCNTeacher graphs set successfully.")
+
+
+
 def main(cfg: DictConfig):
     # 1. Setup global logger (Loguru) and WandB
     setup_logger(log_level=cfg.get("log_level", "INFO"))
@@ -60,6 +96,10 @@ def main(cfg: DictConfig):
 
     # 3. Build components from standard registries
     train_loader, val_loader, model = build_experiment_components(cfg)
+
+    # 3b. Wire GCNTeacher graphs if applicable
+    train_dataset = train_loader.dataset
+    _wire_teacher_graphs(model, train_dataset, cfg)
 
     # 4. Initialize Trainer and run
     trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer

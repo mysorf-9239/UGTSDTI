@@ -66,6 +66,8 @@ class TDCCachingDataset(Dataset):
         # Public attributes: set after loading/building
         self.num_unique_drugs: int | None = None
         self.num_unique_targets: int | None = None
+        self.unique_smiles: list[str] | None = None
+        self.unique_fasta: list[str] | None = None
 
         if os.path.exists(self.cache_file):
             logger.info(f"Loading cached {split} dataset from {self.cache_file}")
@@ -73,6 +75,8 @@ class TDCCachingDataset(Dataset):
             self.data = cached["samples"]
             self.num_unique_drugs = cached.get("num_unique_drugs")
             self.num_unique_targets = cached.get("num_unique_targets")
+            self.unique_smiles = cached.get("unique_smiles")
+            self.unique_fasta = cached.get("unique_fasta")
         else:
             logger.info(f"Cache not found for {split}. Fetching {name} via PyTDC...")
 
@@ -84,25 +88,29 @@ class TDCCachingDataset(Dataset):
             raw_data = split_dict[split]
 
             logger.info(f"Processing and Caching {len(raw_data)} pairs...")
-            samples, num_unique_drugs, num_unique_targets = self._build_sample_list(raw_data)
+            samples, unique_smiles, unique_fasta = self._build_sample_list(raw_data)
             self.data = samples
-            self.num_unique_drugs = num_unique_drugs
-            self.num_unique_targets = num_unique_targets
+            self.unique_smiles = unique_smiles
+            self.unique_fasta = unique_fasta
+            self.num_unique_drugs = len(unique_smiles)
+            self.num_unique_targets = len(unique_fasta)
 
             torch.save(
                 {
                     "samples": samples,
-                    "num_unique_drugs": num_unique_drugs,
-                    "num_unique_targets": num_unique_targets,
+                    "unique_smiles": unique_smiles,
+                    "unique_fasta": unique_fasta,
+                    "num_unique_drugs": self.num_unique_drugs,
+                    "num_unique_targets": self.num_unique_targets,
                 },
                 self.cache_file,
             )
             logger.info(
                 f"Saved cache to {self.cache_file} "
-                f"({num_unique_drugs} unique drugs, {num_unique_targets} unique targets)"
+                f"({self.num_unique_drugs} unique drugs, {self.num_unique_targets} unique targets)"
             )
 
-    def _build_sample_list(self, df) -> tuple[list, int, int]:
+    def _build_sample_list(self, df) -> tuple[list, list[str], list[str]]:
         """Preprocess raw DataFrame rows into model-ready sample dicts.
 
         Each sample contains:
@@ -114,7 +122,7 @@ class TDCCachingDataset(Dataset):
           drug/protein in this split, matching the node ordering in DD/PP graphs.
 
         Returns:
-            (samples, num_unique_drugs, num_unique_targets)
+            (samples, unique_smiles, unique_fasta)
         """
         from tqdm import tqdm
 
@@ -161,7 +169,7 @@ class TDCCachingDataset(Dataset):
                 }
             )
 
-        return samples, len(unique_smiles), len(unique_fasta)
+        return samples, unique_smiles, unique_fasta
 
     def __len__(self):
         return len(self.data)

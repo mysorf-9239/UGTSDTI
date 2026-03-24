@@ -1,0 +1,12 @@
+name: "hybrid_dti"
+params:
+  student_cfg: null
+  teacher_cfg:
+    name: "gcn_teacher"
+    params:
+      drug_feat_dim: 2048
+      protein_feat_dim: 8000
+      hidden_dim: 128
+      num_layers: 2
+      dropout: 0.3
+  fusion_cfg: null
