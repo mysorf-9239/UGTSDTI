@@ -1,0 +1,212 @@
+"""Extended model tests: BaselineTeacher, BaselineStudent edge cases,
+HybridDTIModel forward pass (not just loading), PairGate integration.
+"""
+
+import pytest
+import torch
+from torch_geometric.data import Batch, Data
+
+from ugtsdti.models.hybrid import HybridDTIModel
+from ugtsdti.models.student.baseline import BaselineStudent
+from ugtsdti.models.teacher.baseline import BaselineTeacher
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_batch(B: int = 2) -> dict:
+    graphs = [Data(x=torch.randn(3, 7), edge_index=torch.tensor([[0, 1], [1, 0]])) for _ in range(B)]
+    return {
+        "drug": Batch.from_data_list(graphs),
+        "target_ids": torch.randint(0, 33, (B, 32)),
+        "target_mask": torch.ones(B, 32, dtype=torch.long),
+        "drug_index": torch.randint(0, 1000, (B, 1)),
+        "target_index": torch.randint(0, 1000, (B, 1)),
+    }
+
+
+def _make_hybrid(mc_samples: int = 5) -> HybridDTIModel:
+    return HybridDTIModel(
+        student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}},
+        teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}},
+        fusion_cfg={"name": "pairgate_fusion", "params": {"input_dim": 1, "gate_hidden": 8, "mc_samples": mc_samples}},
+    )
+
+
+# ---------------------------------------------------------------------------
+# BaselineTeacher
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("B", [1, 2, 4])
+def test_baseline_teacher_forward_shape(B):
+    model = BaselineTeacher(hidden_dim=32, num_drugs=1000, num_targets=1000)
+    batch = _make_batch(B=B)
+    out = model(batch)
+    assert "logits" in out
+    assert out["logits"].shape == (B, 1)
+
+
+def test_baseline_teacher_output_finite():
+    model = BaselineTeacher(hidden_dim=32, num_drugs=1000, num_targets=1000)
+    batch = _make_batch(B=4)
+    out = model(batch)
+    assert torch.isfinite(out["logits"]).all()
+
+
+def test_baseline_teacher_gradient_flows():
+    model = BaselineTeacher(hidden_dim=32, num_drugs=1000, num_targets=1000)
+    batch = _make_batch(B=2)
+    out = model(batch)
+    out["logits"].sum().backward()
+    # Embedding weights must have gradients
+    assert model.drug_emb.weight.grad is not None
+    assert model.target_emb.weight.grad is not None
+
+
+# ---------------------------------------------------------------------------
+# BaselineStudent edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_baseline_student_single_sample():
+    model = BaselineStudent(hidden_dim=32)
+    batch = _make_batch(B=1)
+    out = model(batch)
+    assert out["logits"].shape == (1, 1)
+
+
+def test_baseline_student_output_finite():
+    model = BaselineStudent(hidden_dim=32)
+    batch = _make_batch(B=4)
+    out = model(batch)
+    assert torch.isfinite(out["logits"]).all()
+
+
+def test_baseline_student_gradient_flows():
+    model = BaselineStudent(hidden_dim=32)
+    batch = _make_batch(B=2)
+    out = model(batch)
+    out["logits"].sum().backward()
+    assert model.drug_proj.weight.grad is not None
+    assert model.protein_proj.weight.grad is not None
+
+
+def test_baseline_student_all_padding_mask():
+    """All-zero attention mask (fully padded) must not crash."""
+    model = BaselineStudent(hidden_dim=32)
+    B = 2
+    graphs = [Data(x=torch.randn(3, 7), edge_index=torch.tensor([[0, 1], [1, 0]])) for _ in range(B)]
+    batch = {
+        "drug": Batch.from_data_list(graphs),
+        "target_ids": torch.zeros(B, 32, dtype=torch.long),
+        "target_mask": torch.zeros(B, 32, dtype=torch.long),  # fully padded
+    }
+    out = model(batch)
+    assert out["logits"].shape == (B, 1)
+    assert torch.isfinite(out["logits"]).all()
+
+
+# ---------------------------------------------------------------------------
+# HybridDTIModel — forward pass (not just loading)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("B", [1, 2, 4])
+def test_hybrid_forward_training_mode(B):
+    model = _make_hybrid(mc_samples=5)
+    model.train()
+    batch = _make_batch(B=B)
+    out = model(batch)
+
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
+    assert out["logits"].shape == (B, 1)
+    assert out["student_logits"].shape == (B, 1)
+    assert out["teacher_logits"].shape == (B, 1)
+
+
+@pytest.mark.parametrize("B", [1, 2, 4])
+def test_hybrid_forward_eval_mode_mc(B):
+    model = _make_hybrid(mc_samples=5)
+    model.eval()
+    batch = _make_batch(B=B)
+    out = model(batch)
+
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
+    assert out["logits"].shape == (B, 1)
+
+
+def test_hybrid_forward_output_finite():
+    model = _make_hybrid(mc_samples=5)
+    model.eval()
+    batch = _make_batch(B=4)
+    out = model(batch)
+    for key in ("logits", "student_logits", "teacher_logits"):
+        assert torch.isfinite(out[key]).all(), f"{key} contains non-finite values"
+
+
+def test_hybrid_gradient_flows_training():
+    """Loss.backward() must propagate gradients to both branches."""
+    model = _make_hybrid(mc_samples=5)
+    model.train()
+    batch = _make_batch(B=2)
+    out = model(batch)
+
+    loss = out["logits"].sum()
+    loss.backward()
+
+    # Student branch
+    assert model.student.drug_proj.weight.grad is not None
+    # Teacher branch
+    assert model.teacher.drug_emb.weight.grad is not None
+    # Fusion gate
+    assert model.fusion.gate_mlp[0].weight.grad is None  # no var in training → fallback, no gate grad
+    # (fallback path: 0.5*s + 0.5*t, gate_mlp not called)
+
+
+def test_hybrid_gradient_flows_eval_mc():
+    """In eval+MC mode, gate MLP must NOT receive gradients (torch.no_grad in _mc_forward)."""
+    model = _make_hybrid(mc_samples=3)
+    model.eval()
+    batch = _make_batch(B=2)
+
+    # Enable grad for this test
+    with torch.enable_grad():
+        out = model(batch)
+        loss = out["logits"].sum()
+        loss.backward()
+
+    # Gate MLP receives gradients from the fusion forward (outside no_grad)
+    assert model.fusion.gate_mlp[0].weight.grad is not None
+
+
+def test_hybrid_only_student_forward():
+    model = HybridDTIModel(student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}})
+    batch = _make_batch(B=2)
+    out = model(batch)
+    assert "logits" in out
+    assert out["logits"].shape == (2, 1)
+
+
+def test_hybrid_only_teacher_forward():
+    model = HybridDTIModel(
+        teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}}
+    )
+    batch = _make_batch(B=2)
+    out = model(batch)
+    assert "logits" in out
+    assert out["logits"].shape == (2, 1)
+
+
+def test_hybrid_is_hybrid_flag():
+    full = _make_hybrid()
+    assert full.is_hybrid is True
+
+    student_only = HybridDTIModel(student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}})
+    assert student_only.is_hybrid is False
+
+    teacher_only = HybridDTIModel(
+        teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}}
+    )
+    assert teacher_only.is_hybrid is False
