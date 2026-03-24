@@ -135,7 +135,7 @@ flowchart TD
     D -- Yes --> E["Load from data/cache/"]
     D -- No --> F["RDKit\nSMILES → PyG molecular graph\n7 atom features · 3 bond features"]
     F --> G["ESMSequenceTokenizer\nFASTA → input_ids, attention_mask"]
-    G --> H["MD5 hash → drug_index, target_index\nfor Teacher transductive lookup"]
+    G --> H["Sequential index → drug_index, target_index\n(0..N-1, per-split unique drug/protein list)"]
     H --> I["torch.save → data/cache/*.pt"]
     I --> E
     E --> J["PyG DataLoader → Trainer"]

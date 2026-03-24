@@ -1,40 +1,60 @@
 #!/bin/bash
-# run_baselines.sh - Demonstrates the 4 ablation modes (Offline Baseline Checks)
+# run_baselines.sh — Quick smoke tests for all available model configs (2 epochs each).
+# Usage: bash scripts/run_baselines.sh
+#
+# Models covered:
+#   Student-only:  baseline_student
+#   Teacher-only:  baseline_teacher (Embedding), gcn_teacher (GCN)
+#   Hybrid:        hybrid_baseline (Embedding teacher), hybrid_gcn (GCN teacher)
+#
+# All runs use WANDB_MODE=disabled to avoid polluting experiment logs.
 
+set -e
 cd "$(dirname "$0")/.." || exit 1
 
 export WANDB_MODE=disabled
+EPOCHS=2
+DATA=tdc_davis
+TRAINER=default_trainer
 
-echo "=========================================================="
-echo "Starting UGTS-DTI Baseline Ablation Tests"
-echo "=========================================================="
+run() {
+    local label="$1"
+    local model="$2"
+    local extra="${3:-}"
+    echo ""
+    echo ">>> [$label]"
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model="$model" \
+        data="$DATA" \
+        trainer="$TRAINER" \
+        trainer.params.epochs="$EPOCHS" \
+        $extra
+}
 
-# 1. Evaluate Student Only Branch
-echo "[1/4] Running ONLY STUDENT Baseline..."
-conda run -n ugtsdti python -m ugtsdti.main \
-    model=only_student \
-    data=tdc_davis \
-    trainer.params.epochs=2
+echo "=========================================="
+echo " UGTS-DTI Baseline Smoke Tests"
+echo "=========================================="
 
-# 2. Evaluate Teacher Only Branch
-echo "[2/4] Running ONLY TEACHER Baseline..."
-conda run -n ugtsdti python -m ugtsdti.main \
-    model=only_teacher \
-    data=tdc_davis \
-    trainer.params.epochs=2
+# --- Student-only ---
+run "1/6 | only_student (baseline)" only_student
 
-# 3. Evaluate Hybrid DTI without Knowledge Distillation
-echo "[3/4] Running HYBRID BASELINE (No Distillation, PairGate Fusion Only)..."
-conda run -n ugtsdti python -m ugtsdti.main \
-    model=hybrid_baseline \
-    data=tdc_davis \
-    trainer.params.epochs=2 \
-    trainer.loss.name=bce_with_logits
+# --- Teacher-only ---
+run "2/6 | only_teacher (Embedding, dummy)" only_teacher
+run "3/6 | only_teacher_gcn (GCN, real signal)" only_teacher_gcn
 
-# 4. Hybrid Baseline with KD Loss + PairGate MC-Dropout Active
-echo "[4/4] Running HYBRID BASELINE (With KD Loss Plugin & MC-Dropout)..."
-conda run -n ugtsdti python -m ugtsdti.main model=hybrid_baseline data=tdc_davis trainer.params.epochs=2 trainer.loss.name=kd_dual_loss +trainer.loss.alpha=0.5
+# --- Hybrid: baseline teacher + BCE ---
+run "4/6 | hybrid_baseline + BCE" hybrid_baseline \
+    "trainer.loss.name=bce_with_logits"
 
-echo "=========================================================="
-echo "All baseline ablations completed successfully!"
-echo "=========================================================="
+# --- Hybrid: baseline teacher + KD loss ---
+run "5/6 | hybrid_baseline + KD loss" hybrid_baseline \
+    "trainer.loss.name=kd_dual_loss +trainer.loss.alpha=0.5"
+
+# --- Hybrid: GCN teacher + KD loss ---
+run "6/6 | hybrid_gcn + KD loss" hybrid_gcn \
+    "trainer.loss.name=kd_dual_loss +trainer.loss.alpha=0.5"
+
+echo ""
+echo "=========================================="
+echo " All smoke tests passed."
+echo "=========================================="

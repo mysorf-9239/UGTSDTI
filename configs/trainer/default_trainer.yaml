@@ -10,3 +10,7 @@ params:
   output_dir: "./outputs/checkpoints"
 loss:
   name: "bce_with_logits"
+graph:
+  warmup_epochs: 5
+  rebuild_every: 10
+  ema_decay: 0.99

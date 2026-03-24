@@ -40,6 +40,8 @@ line_length = 120
 [tool.mypy]
 ignore_missing_imports = true
 strict_optional = false
+no_site_packages = true
+exclude = ["rdkit-stubs"]
 
 [tool.ruff]
 line-length = 120

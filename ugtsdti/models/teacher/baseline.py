@@ -12,14 +12,16 @@ from ugtsdti.core.registry import MODELS
 class BaselineTeacher(nn.Module):
     """
     Dummy/Baseline Teacher Model for Pipeline Validation.
-    The Teacher branch canonically uses global Graph embeddings (transductive lookup).
-    We simulate this by using nn.Embedding over the globally consistent hash IDs.
+
+    Uses nn.Embedding over sequential node indices (0..num_drugs-1) to simulate
+    transductive graph lookup. num_drugs and num_targets should be set to the
+    number of unique drugs/proteins in the dataset (from dataset.num_unique_drugs).
     """
 
     def __init__(
         self,
-        num_drugs: int = 100003,  # Large prime used in modulo hashing
-        num_targets: int = 100003,
+        num_drugs: int = 1000,
+        num_targets: int = 1000,
         hidden_dim: int = 64,
         dropout: float = 0.1,
     ):
