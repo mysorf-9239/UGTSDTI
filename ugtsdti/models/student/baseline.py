@@ -67,6 +67,6 @@ class BaselineStudent(nn.Module):
 
         ### 3. Fusion ###
         pair_emb = torch.cat([drug_emb, protein_emb], dim=1)  # [B, hidden_dim * 2]
-        logits = self.fusion(pair_emb)  # [B, 1]
+        logits = self.fusion(pair_emb).squeeze(-1)  # [B]
 
         return {"logits": logits}

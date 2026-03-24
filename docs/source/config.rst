@@ -14,9 +14,9 @@ Default Config (``configs/default.yaml``)
 
     defaults:
       - _self_
-      - model: hybrid_baseline   # configs/model/hybrid_baseline.yaml
-      - data: tdc_davis          # configs/data/tdc_davis.yaml
-      - trainer: default_trainer # configs/trainer/default_trainer.yaml
+      - model: baseline.baseline.ug  # configs/model/baseline.baseline.ug.yaml
+      - data: tdc_davis              # configs/data/tdc_davis.yaml
+      - trainer: default_trainer     # configs/trainer/default_trainer.yaml
 
     run_name: "ugtsdti_baseline"
     seed: 42
@@ -58,12 +58,32 @@ Default Config (``configs/default.yaml``)
 Model Configs (``configs/model/``)
 ------------------------------------
 
-Three pre-built model configs are provided:
+Naming convention: ``<teacher>.<student>.<fusion>.yaml``
 
-hybrid_baseline.yaml
-~~~~~~~~~~~~~~~~~~~~
+Loss is NOT encoded in the config name — it is overridden via ``trainer.loss.name``.
 
-Full Teacher–Student–PairGate pipeline.
+**Available configs:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Config file
+     - Description
+   * - ``_.baseline._.yaml``
+     - Only student (baseline) — no teacher, no fusion
+   * - ``baseline._._.yaml``
+     - Only teacher (dummy embedding) — no student, no fusion
+   * - ``gcn._._.yaml``
+     - Only teacher (GCN) — no student, no fusion
+   * - ``_.esm._.yaml``
+     - Only student (ESM) — no teacher, no fusion
+   * - ``baseline.baseline.ug.yaml``
+     - Hybrid: dummy teacher + baseline student + UG fusion
+   * - ``gcn.baseline.ug.yaml``
+     - Hybrid: GCN teacher + baseline student + UG fusion ← **main**
+
+**Example — gcn.baseline.ug.yaml:**
 
 .. code-block:: yaml
 
@@ -74,70 +94,37 @@ Full Teacher–Student–PairGate pipeline.
         params:
           hidden_dim: 128
       teacher_cfg:
-        name: "baseline_teacher"
+        name: "gcn_teacher"
         params:
+          drug_feat_dim: 2048
+          protein_feat_dim: 8000
           hidden_dim: 128
-          num_drugs: 100003
-          num_targets: 100003
+          num_layers: 2
+          dropout: 0.3
       fusion_cfg:
-        name: "pairgate_fusion"
+        name: "ug_fusion"
         params:
-          input_dim: 128
           gate_hidden: 32
-          mc_samples: 5    # number of MC-Dropout passes at eval time
-
-only_student.yaml
-~~~~~~~~~~~~~~~~~
-
-Inductive-only ablation (no teacher, no gate).
-
-.. code-block:: yaml
-
-    name: "hybrid_dti"
-    params:
-      student_cfg:
-        name: "baseline_student"
-        params:
-          hidden_dim: 128
-      teacher_cfg: null
-      fusion_cfg: null
-
-only_teacher.yaml
-~~~~~~~~~~~~~~~~~
-
-Transductive-only ablation.
-
-.. code-block:: yaml
-
-    name: "hybrid_dti"
-    params:
-      student_cfg: null
-      teacher_cfg:
-        name: "baseline_teacher"
-        params:
-          hidden_dim: 128
-          num_drugs: 100003
-          num_targets: 100003
-      fusion_cfg: null
+          mc_samples: 5
 
 **Model config keys**:
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 70
+   :widths: 40 60
 
    * - Key
      - Description
    * - ``name``
      - Registry key passed to ``MODELS.build()``.
    * - ``params.student_cfg``
-     - Nested config for ``BaselineStudent``; set to ``null`` to disable.
+     - Nested config for student model; set to ``null`` to disable.
    * - ``params.teacher_cfg``
-     - Nested config for ``BaselineTeacher``; set to ``null`` to disable.
+     - Nested config for teacher model; set to ``null`` to disable.
    * - ``params.fusion_cfg``
-     - Nested config for ``PairGateFusion``; set to ``null`` to disable.
+     - Nested config for ``UncertaintyGatedFusion``; set to ``null`` to disable.
    * - ``params.fusion_cfg.params.mc_samples``
-     - Number of MC-Dropout passes. ``0`` disables uncertainty gating.
+     - Number of MC-Dropout passes at eval time. ``0`` disables uncertainty gating.
    * - ``params.fusion_cfg.params.gate_hidden``
      - Hidden dimension of the gate MLP.
 
@@ -177,7 +164,7 @@ Data Config (``configs/data/tdc_davis.yaml``)
    * - ``split``
      - Which split to load: ``"train"`` / ``"valid"`` / ``"test"``.
    * - ``split_type``
-     - PyTDC split method: ``"cold_split"`` (cold-start) or ``"random_split"``.
+     - PyTDC split method: ``"cold_split"`` (S4) or ``"random_split"`` (S1).
    * - ``frac``
      - Train / val / test fractions. Must sum to 1.0.
    * - ``seed``
@@ -201,7 +188,7 @@ Trainer Config (``configs/trainer/default_trainer.yaml``)
       num_workers: 0
       output_dir: "./outputs/checkpoints"
     loss:
-      name: "bce_with_logits"
+      name: "bce"
 
 .. list-table::
    :header-rows: 1
@@ -235,29 +222,38 @@ Trainer Config (``configs/trainer/default_trainer.yaml``)
      - ``"./outputs/checkpoints"``
      - Directory for ``best_model.pt`` checkpoint.
    * - ``loss.name``
-     - ``"bce_with_logits"``
-     - Registry key for the loss function.
+     - ``"bce"``
+     - Registry key for the loss function (``"bce"`` or ``"kd"``).
+   * - ``loss.alpha``
+     - ``0.5``
+     - KD distillation weight (only used when ``loss.name="kd"``).
 
 ----
 
 CLI Override Examples
 ---------------------
 
-Hydra supports inline overrides for any config key:
-
 .. code-block:: bash
 
     # Change dataset to KIBA
-    python -m ugtsdti.main data=tdc_davis data.train.params.name=KIBA data.val.params.name=KIBA
+    conda run -n ugtsdti python -m ugtsdti.main data=tdc_davis \
+        data.train.params.name=KIBA data.val.params.name=KIBA
 
     # Increase MC-Dropout passes
-    python -m ugtsdti.main model.params.fusion_cfg.params.mc_samples=10
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model.params.fusion_cfg.params.mc_samples=10
 
     # Tune learning rate and batch size
-    python -m ugtsdti.main trainer.params.lr=1e-4 trainer.params.batch_size=64
+    conda run -n ugtsdti python -m ugtsdti.main \
+        trainer.params.lr=1e-4 trainer.params.batch_size=64
 
     # Student-only ablation with longer training
-    python -m ugtsdti.main model=only_student trainer.params.epochs=200
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model=_.baseline._ trainer.params.epochs=200
+
+    # KD loss with custom alpha
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model=gcn.baseline.ug trainer.loss.name=kd "+trainer.loss.alpha=0.3"
 
     # Disable WandB
-    python -m ugtsdti.main logging.wandb_enabled=false
+    WANDB_MODE=disabled conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug

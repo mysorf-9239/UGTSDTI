@@ -7,10 +7,27 @@ All hyperparameters are controlled via Hydra YAML configs.
 
 ----
 
-Knowledge Distillation Loss
----------------------------
+Loss Functions
+--------------
 
-``KDDualLoss`` computes a convex combination of two objectives:
+Two loss functions are available, both registered in the ``LOSSES`` registry:
+
+BCELoss (registry: ``"bce"``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Wraps ``nn.BCEWithLogitsLoss`` to accept the standard model output dict.
+Default loss for ablation and single-branch modes.
+
+.. autoclass:: ugtsdti.losses.bce.BCELoss
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :noindex:
+
+KDLoss (registry: ``"kd"``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Knowledge Distillation loss — convex combination of task loss and distillation loss:
 
 .. math::
 
@@ -19,16 +36,16 @@ Knowledge Distillation Loss
 
 where:
 
-- :math:`\hat{y}` — fused logit from PairGate
+- :math:`\hat{y}` — fused logit from UG fusion
 - :math:`y` — ground-truth binary label
 - :math:`\ell_s` — student logit
 - :math:`\ell_t` — teacher logit
 - :math:`\alpha \in [0, 1]` — distillation weight (default ``0.5``)
 
 When only one branch is active (student-only or teacher-only mode),
-``KDDualLoss`` falls back to plain BCE.
+``KDLoss`` falls back to plain BCE.
 
-.. autoclass:: ugtsdti.losses.distillation.KDDualLoss
+.. autoclass:: ugtsdti.losses.kd.KDLoss
    :members:
    :undoc-members:
    :show-inheritance:
@@ -58,7 +75,6 @@ Training Loop
 **Key Trainer behaviours**:
 
 - Gradient clipping: ``torch.nn.utils.clip_grad_norm_`` at ``grad_clip`` (default 1.0)
-- LR scheduler: optional, stepped once per epoch
 - Checkpoint: saves ``best_model.pt`` whenever validation AUROC improves
 - WandB logging: all train/val metrics + LR per epoch (optional)
 
@@ -106,9 +122,6 @@ for classification metrics; raw values are used for MSE and CI.
 .. autofunction:: ugtsdti.core.metrics.compute_dti_metrics
    :noindex:
 
-.. autofunction:: ugtsdti.core.metrics._concordance_index
-   :noindex:
-
 ----
 
 Running an Experiment
@@ -116,16 +129,20 @@ Running an Experiment
 
 .. code-block:: bash
 
-    # Hybrid mode (default)
-    python -m ugtsdti.main model=hybrid_baseline data=tdc_davis
+    # Hybrid GCN + UG fusion (default)
+    conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis
 
     # Student-only ablation
-    python -m ugtsdti.main model=student_only data=tdc_davis
+    conda run -n ugtsdti python -m ugtsdti.main model=_.baseline._ data=tdc_davis
 
     # Override hyperparameters inline
-    python -m ugtsdti.main trainer.params.lr=5e-4 trainer.params.epochs=50
+    conda run -n ugtsdti python -m ugtsdti.main trainer.params.lr=5e-4 trainer.params.epochs=50
+
+    # KD loss with custom alpha
+    conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug \
+        trainer.loss.name=kd "+trainer.loss.alpha=0.3"
 
     # Disable WandB
-    python -m ugtsdti.main wandb=null
+    WANDB_MODE=disabled conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis
 
 See :doc:`config` for the full list of configurable keys.

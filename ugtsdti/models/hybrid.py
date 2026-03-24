@@ -27,7 +27,7 @@ class HybridDTIModel(nn.Module):
         """Run N stochastic MC-Dropout passes and return mean logit and epistemic variance.
 
         Both ``mean_logit`` and ``epistemic_var`` are derived from the same ``mc_logits``
-        tensor, ensuring mathematical consistency for PairGate fusion.
+        tensor, ensuring mathematical consistency for UG (Uncertainty-Gated) fusion.
 
         Args:
             branch: Student or Teacher sub-model (must have Dropout layers).
@@ -44,8 +44,8 @@ class HybridDTIModel(nn.Module):
             mc_logits = torch.stack([branch(batch)["logits"] for _ in range(mc_samples)], dim=-1)  # [B, 1, N]
         if not training_mode:
             branch.eval()
-        mean_logit = mc_logits.mean(dim=-1)  # [B, 1]
-        epistemic_var = mc_logits.var(dim=-1).squeeze(-1)  # [B]
+        mean_logit = mc_logits.mean(dim=-1).view(-1)  # [B]
+        epistemic_var = mc_logits.var(dim=-1).view(-1)  # [B]
         return mean_logit, epistemic_var
 
     def forward(self, batch: dict) -> dict:
@@ -54,7 +54,7 @@ class HybridDTIModel(nn.Module):
         Supports three modes determined by config:
         - ``only_student``: student branch only.
         - ``only_teacher``: teacher branch only.
-        - ``hybrid``: both branches fused via PairGate.
+        - ``hybrid``: both branches fused via UG (Uncertainty-Gated) fusion.
         """
         if self.is_hybrid:
             mc_samples = getattr(self.fusion, "mc_samples", 0)

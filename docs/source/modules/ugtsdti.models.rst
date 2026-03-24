@@ -34,10 +34,10 @@ ugtsdti.models.teacher.baseline module
    :show-inheritance:
    :member-order: bysource
 
-ugtsdti.models.fusion.pairgate module
---------------------------------------
+ugtsdti.models.fusion.ug module
+--------------------------------
 
-.. automodule:: ugtsdti.models.fusion.pairgate
+.. automodule:: ugtsdti.models.fusion.ug
    :members:
    :undoc-members:
    :show-inheritance:

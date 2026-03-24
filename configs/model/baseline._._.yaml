@@ -5,6 +5,6 @@ params:
     name: "baseline_teacher"
     params:
       hidden_dim: 128
-      num_drugs: 100003
-      num_targets: 100003
+      num_drugs: 1000   # set to dataset.num_unique_drugs at runtime
+      num_targets: 1000 # set to dataset.num_unique_targets at runtime
   fusion_cfg: null

@@ -7,7 +7,6 @@ from ugtsdti.models.student.baseline import BaselineStudent
 
 def test_baseline_student_forward():
     model = BaselineStudent(hidden_dim=64)
-    # 2 graphs with 3 atoms each
     graphs = [
         Data(x=torch.randn(3, 7), edge_index=torch.tensor([[0, 1], [1, 0]])),
         Data(x=torch.randn(3, 7), edge_index=torch.tensor([[0, 1], [1, 0]])),
@@ -20,7 +19,7 @@ def test_baseline_student_forward():
     out = model(batch)
 
     assert "logits" in out
-    assert out["logits"].shape == (2, 1)
+    assert out["logits"].shape == (2,)
 
 
 def test_hybrid_ablation_loading():
@@ -40,6 +39,6 @@ def test_hybrid_ablation_loading():
     hybrid_full = HybridDTIModel(
         student_cfg={"name": "baseline_student", "params": {"hidden_dim": 64}},
         teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 64, "num_drugs": 1000, "num_targets": 1000}},
-        fusion_cfg={"name": "pairgate_fusion", "params": {"input_dim": 1, "gate_hidden": 16, "mc_samples": 5}},
+        fusion_cfg={"name": "ug_fusion", "params": {"gate_hidden": 16, "mc_samples": 5}},
     )
     assert hybrid_full.fusion is not None

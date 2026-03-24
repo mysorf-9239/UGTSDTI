@@ -52,6 +52,6 @@ class BaselineTeacher(nn.Module):
         target_emb = self.target_emb(target_idx)  # [B, hidden_dim]
 
         pair_emb = torch.cat([drug_emb, target_emb], dim=1)  # [B, hidden_dim * 2]
-        logits = self.fusion(pair_emb)
+        logits = self.fusion(pair_emb).squeeze(-1)  # [B]
 
         return {"logits": logits}

@@ -41,7 +41,7 @@ line_length = 120
 ignore_missing_imports = true
 strict_optional = false
 no_site_packages = true
-exclude = ["rdkit-stubs"]
+exclude = ["rdkit-stubs", "examples", "scripts"]
 
 [tool.ruff]
 line-length = 120

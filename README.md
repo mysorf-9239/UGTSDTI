@@ -10,12 +10,12 @@ Drug-Target Interaction (DTI) prediction is a critical step in early-stage drug 
 A key challenge is the **Cold-Start Problem**: models trained on known drug-protein pairs fail to generalize to entirely
 unseen drugs or targets (S2–S4 splits).
 
-UGTSDTI addresses this by combining two complementary encoders via an uncertainty-aware fusion gate (**PairGate**):
+UGTSDTI addresses this by combining two complementary encoders via an uncertainty-aware fusion gate (**UG — Uncertainty-Gated**):
 
 - **Teacher** (graph-based, transductive): learns from global Drug-Drug and Protein-Protein similarity graphs. Strong on
   warm-start (S1), degrades on cold-start because new nodes have no graph context.
 - **Student** (sequence-based, inductive): encodes directly from SMILES/FASTA. Generalizes to unseen molecules.
-- **PairGate**: estimates epistemic uncertainty of each branch via MC-Dropout and dynamically weights their
+- **UG Fusion**: estimates epistemic uncertainty of each branch via MC-Dropout and dynamically weights their
   contributions — when the Teacher is uncertain (cold-start), the Student is trusted more.
 
 The core novelty is this adaptive, uncertainty-driven fusion: most SOTA DTI models commit to one encoder type and do not
@@ -57,7 +57,7 @@ flowchart LR
     end
 
     subgraph Teacher["Teacher Branch (Transductive)"]
-        E["GNN Encoder\nDD + PP Similarity Graph\n(GAT / GCN)"]
+        E["GNN Encoder\nDD + PP Similarity Graph\n(GCN)"]
         F["logit_t (train) / ŷ_t (eval)"]
     end
 
@@ -66,7 +66,7 @@ flowchart LR
         H["ŷ_t = Mean(logit_t^1..N)\nvar_t = Var(logit_t^1..N)"]
     end
 
-    subgraph Fusion["PairGate Fusion"]
+    subgraph Fusion["UG Fusion (Uncertainty-Gated)"]
         I["Gate MLP\n[var_s, var_t] → α ∈ (0,1)"]
         J["ŷ = α · logit_t + (1−α) · logit_s"]
     end
@@ -80,7 +80,7 @@ flowchart LR
     I --> J
 ```
 
-### PairGate Fusion
+### UG Fusion (Uncertainty-Gated)
 
 Epistemic uncertainty is estimated via **Monte Carlo Dropout**: at eval time, the model runs `N` stochastic forward
 passes with dropout active and computes both the mean prediction and variance across passes:
@@ -109,7 +109,7 @@ When the Teacher is confident (warm-start), `α → 1` → Teacher dominates.
 
 ### Training Objective
 
-Training uses **KDDualLoss**, a convex combination of task loss and knowledge distillation loss:
+Training uses **KDLoss**, a convex combination of task loss and knowledge distillation loss:
 
 ```
 L = (1 − β) · L_task + β · L_distill
@@ -167,20 +167,20 @@ Configuration is managed via [Hydra](https://hydra.cc/). All parameters can be o
 
 ```bash
 # Student-only baseline
-python -m ugtsdti.main model=only_student data=tdc_davis
+conda run -n ugtsdti python -m ugtsdti.main model=_.baseline._ data=tdc_davis
 
-# Teacher-only baseline
-python -m ugtsdti.main model=only_teacher data=tdc_davis
+# Teacher-only baseline (GCN)
+conda run -n ugtsdti python -m ugtsdti.main model=gcn._._ data=tdc_davis
 
-# Hybrid: student + teacher + PairGate (BCE loss)
-python -m ugtsdti.main model=hybrid_baseline data=tdc_davis
+# Hybrid: GCN teacher + baseline student + UG fusion (BCE loss)
+conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis
 
 # Hybrid with Knowledge Distillation loss
-python -m ugtsdti.main model=hybrid_baseline data=tdc_davis \
-    trainer.loss.name=kd_dual_loss trainer.loss.alpha=0.5
+conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis \
+    trainer.loss.name=kd trainer.loss.alpha=0.5
 
-# Full ablation suite (4 modes, WandB disabled)
-bash scripts/run_baselines.sh
+# Smoke test all combos (2 epochs, WandB disabled)
+WANDB_MODE=disabled bash scripts/smoke.sh
 ```
 
 ---
@@ -214,10 +214,10 @@ The framework natively supports four ablation configurations via `HybridDTIModel
 ```mermaid
 flowchart LR
     A["HybridDTIModel"] --> B{student_cfg\nteacher_cfg\nfusion_cfg}
-    B -->|student only| C["only_student\nBaseline: sequence encoder alone"]
-    B -->|teacher only| D["only_teacher\nBaseline: graph encoder alone"]
-    B -->|all three| E["hybrid_baseline\nPairGate fusion · BCE loss"]
-    B -->|all three + KD| F["hybrid_kd\nPairGate fusion · KDDualLoss"]
+    B -->|student only| C["_.baseline._\nBaseline: sequence encoder alone"]
+    B -->|teacher only| D["gcn._._\nBaseline: GCN graph encoder alone"]
+    B -->|all three| E["gcn.baseline.ug\nUG fusion · BCE loss"]
+    B -->|all three + KD| F["gcn.baseline.ug\nUG fusion · KDLoss"]
 ```
 
 ---
@@ -227,40 +227,44 @@ flowchart LR
 ```
 UGTSDTI/
 ├── configs/
-│   ├── default.yaml              # Top-level Hydra defaults
+│   ├── default.yaml                  # Top-level Hydra defaults
 │   ├── model/
-│   │   ├── only_student.yaml
-│   │   ├── only_teacher.yaml
-│   │   └── hybrid_baseline.yaml
+│   │   ├── _.baseline._.yaml         # only_student
+│   │   ├── baseline._._.yaml         # only_teacher (dummy)
+│   │   ├── gcn._._.yaml              # only_teacher_gcn
+│   │   ├── _.esm._.yaml              # only_esm_student
+│   │   ├── baseline.baseline.ug.yaml # hybrid baseline + UG
+│   │   └── gcn.baseline.ug.yaml      # hybrid GCN + UG  ← main
 │   ├── data/
 │   │   └── tdc_davis.yaml
 │   └── trainer/
 │       └── default_trainer.yaml
 ├── ugtsdti/
-│   ├── main.py                   # Entry point (@hydra.main)
-│   ├── core/                     # FROZEN: Registry, Trainer, Metrics
+│   ├── main.py                       # Entry point (@hydra.main)
+│   ├── core/                         # FROZEN: Registry, Trainer, Metrics
 │   ├── data/
 │   │   ├── datasets/
-│   │   │   └── tdc_dataset.py    # TDCCachingDataset (PyTDC + disk cache)
+│   │   │   └── tdc_dataset.py        # TDCCachingDataset (PyTDC + disk cache)
 │   │   └── transforms/
-│   │       ├── chemistry.py      # smiles_to_graph (RDKit, OGB-standard features)
-│   │       └── sequence.py       # ESMSequenceTokenizer
+│   │       ├── chemistry.py          # smiles_to_graph (RDKit, OGB-standard features)
+│   │       └── sequence.py           # ESMSequenceTokenizer
 │   ├── models/
-│   │   ├── hybrid.py             # HybridDTIModel — orchestration + MC-Dropout
+│   │   ├── hybrid.py                 # HybridDTIModel — orchestration + MC-Dropout
 │   │   ├── student/
-│   │   │   └── baseline.py       # BaselineStudent (GlobalMeanPool, working)
+│   │   │   └── baseline.py           # BaselineStudent (GlobalMeanPool)
 │   │   ├── teacher/
-│   │   │   └── baseline.py       # BaselineTeacher (nn.Embedding placeholder)
+│   │   │   ├── baseline.py           # BaselineTeacher (nn.Embedding placeholder)
+│   │   │   └── gcn_teacher.py        # GCNTeacher (real GCN on DD/PP graphs)
 │   │   └── fusion/
-│   │       └── pairgate.py       # PairGateFusion (gate MLP + uncertainty weighting)
+│   │       └── ug.py                 # UncertaintyGatedFusion (gate MLP + MC-Dropout)
 │   ├── losses/
-│   │   └── distillation.py       # KDDualLoss (BCE task + MSE distillation)
-│   └── utils/                    # Logger, Seed
-├── tests/                        # pytest suite
-├── scripts/
-│   ├── run_baselines.sh          # 4-mode ablation (WandB disabled)
-│   └── run_experiments.sh        # Full experiment runs
-└── .agent/                       # AI context, task tracking, research notes
+│   │   ├── bce.py                    # BCELoss (registry: "bce")
+│   │   └── kd.py                     # KDLoss (registry: "kd")
+│   └── utils/                        # Logger, Seed
+├── examples/                         # Per-combo train.py scripts
+├── scripts/                          # Shell scripts (local + smoke test)
+├── tests/                            # pytest suite (155 tests)
+└── .agent/                           # AI context, task tracking, research notes
 ```
 
 ---
@@ -273,25 +277,20 @@ Full API reference and narrative guides are built with Sphinx.
 # Install deps (once)
 pip install -r docs/requirements.txt
 
-# Live-reload server (auto-rebuilds on file save)
+# Live-reload server
 cd docs
 sphinx-autobuild --watch ../ugtsdti --open-browser source build
-# → http://127.0.0.1:8000
 
 # One-shot HTML build
 make html
-# → docs/build/index.html
 ```
 
-Or via Docker (no local install needed):
+Or via Docker:
 
 ```bash
 docker build --file docs/Dockerfile --tag ugtsdti-docs .
 docker run -it --rm -p 8000:8000 ugtsdti-docs
-# → http://localhost:8000
 ```
-
-See [`docs/README.md`](docs/README.md) for details.
 
 ---
 

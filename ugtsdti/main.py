@@ -75,7 +75,7 @@ def _wire_teacher_graphs(model, train_dataset, cfg: DictConfig) -> None:
     logger.info("GCNTeacher graphs set successfully.")
 
 
-@hydra.main(config_path="../../configs", config_name="default", version_base=None)
+@hydra.main(config_path="../configs", config_name="default", version_base=None)
 def main(cfg: DictConfig) -> None:
     # 1. Setup global logger (Loguru) and WandB
     setup_logger(log_level=cfg.get("log_level", "INFO"))
@@ -99,7 +99,7 @@ def main(cfg: DictConfig) -> None:
     trainer_cfg = cfg.trainer.params if "params" in cfg.trainer else cfg.trainer
     device = torch.device(trainer_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
 
-    loss_cfg = trainer_cfg.get("loss", {"name": "bce_with_logits"})
+    loss_cfg = trainer_cfg.get("loss", {"name": "bce"})
     loss_fn = LOSSES.build(loss_cfg)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=trainer_cfg.get("lr", 1e-3))

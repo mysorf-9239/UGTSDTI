@@ -96,7 +96,7 @@ def test_models_registry_has_expected_keys():
     # Trigger imports so decorators run
     import ugtsdti.models  # noqa: F401
 
-    expected = {"hybrid_dti", "baseline_student", "baseline_teacher", "pairgate_fusion"}
+    expected = {"hybrid_dti", "baseline_student", "baseline_teacher", "ug_fusion"}
     for key in expected:
         assert key in MODELS, f"'{key}' not found in MODELS registry"
 
@@ -109,7 +109,7 @@ def test_models_registry_has_expected_keys():
 def test_losses_registry_has_expected_keys():
     import ugtsdti.losses  # noqa: F401
 
-    expected = {"bce_with_logits", "kd_dual_loss"}
+    expected = {"bce", "kd"}
     for key in expected:
         assert key in LOSSES, f"'{key}' not found in LOSSES registry"
 
@@ -117,14 +117,14 @@ def test_losses_registry_has_expected_keys():
 def test_losses_build_bce():
     import ugtsdti.losses  # noqa: F401
 
-    loss = LOSSES.build({"name": "bce_with_logits", "params": {}})
+    loss = LOSSES.build({"name": "bce", "params": {}})
     assert loss is not None
 
 
 def test_losses_build_kd_dual():
     import ugtsdti.losses  # noqa: F401
 
-    loss = LOSSES.build({"name": "kd_dual_loss", "params": {"alpha": 0.3}})
+    loss = LOSSES.build({"name": "kd", "params": {"alpha": 0.3}})
     assert loss is not None
 
 

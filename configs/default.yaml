@@ -1,7 +1,7 @@
 # Default Main Entry Configuration
 defaults:
   - _self_
-  - model: hybrid_baseline
+  - model: baseline.baseline.ug
   - data: tdc_davis
   - trainer: default_trainer
 

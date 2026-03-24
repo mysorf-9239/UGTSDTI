@@ -1,5 +1,5 @@
 """Extended model tests: BaselineTeacher, BaselineStudent edge cases,
-HybridDTIModel forward pass (not just loading), PairGate integration.
+HybridDTIModel forward pass (not just loading), UG fusion integration.
 """
 
 import pytest
@@ -30,7 +30,7 @@ def _make_hybrid(mc_samples: int = 5) -> HybridDTIModel:
     return HybridDTIModel(
         student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}},
         teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}},
-        fusion_cfg={"name": "pairgate_fusion", "params": {"input_dim": 1, "gate_hidden": 8, "mc_samples": mc_samples}},
+        fusion_cfg={"name": "ug_fusion", "params": {"gate_hidden": 8, "mc_samples": mc_samples}},
     )
 
 
@@ -45,7 +45,7 @@ def test_baseline_teacher_forward_shape(B):
     batch = _make_batch(B=B)
     out = model(batch)
     assert "logits" in out
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
 
 
 def test_baseline_teacher_output_finite():
@@ -60,7 +60,6 @@ def test_baseline_teacher_gradient_flows():
     batch = _make_batch(B=2)
     out = model(batch)
     out["logits"].sum().backward()
-    # Embedding weights must have gradients
     assert model.drug_emb.weight.grad is not None
     assert model.target_emb.weight.grad is not None
 
@@ -74,7 +73,7 @@ def test_baseline_student_single_sample():
     model = BaselineStudent(hidden_dim=32)
     batch = _make_batch(B=1)
     out = model(batch)
-    assert out["logits"].shape == (1, 1)
+    assert out["logits"].shape == (1,)
 
 
 def test_baseline_student_output_finite():
@@ -104,7 +103,7 @@ def test_baseline_student_all_padding_mask():
         "target_mask": torch.zeros(B, 32, dtype=torch.long),  # fully padded
     }
     out = model(batch)
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
     assert torch.isfinite(out["logits"]).all()
 
 
@@ -121,9 +120,9 @@ def test_hybrid_forward_training_mode(B):
     out = model(batch)
 
     assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
-    assert out["logits"].shape == (B, 1)
-    assert out["student_logits"].shape == (B, 1)
-    assert out["teacher_logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
+    assert out["student_logits"].shape == (B,)
+    assert out["teacher_logits"].shape == (B,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4])
@@ -134,7 +133,7 @@ def test_hybrid_forward_eval_mode_mc(B):
     out = model(batch)
 
     assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
 
 
 def test_hybrid_forward_output_finite():
@@ -160,24 +159,21 @@ def test_hybrid_gradient_flows_training():
     assert model.student.drug_proj.weight.grad is not None
     # Teacher branch
     assert model.teacher.drug_emb.weight.grad is not None
-    # Fusion gate
-    assert model.fusion.gate_mlp[0].weight.grad is None  # no var in training → fallback, no gate grad
-    # (fallback path: 0.5*s + 0.5*t, gate_mlp not called)
+    # Fusion gate — fallback path (no var in training), gate_mlp not called
+    assert model.fusion.gate_mlp[0].weight.grad is None
 
 
 def test_hybrid_gradient_flows_eval_mc():
-    """In eval+MC mode, gate MLP must NOT receive gradients (torch.no_grad in _mc_forward)."""
+    """In eval+MC mode, gate MLP must receive gradients from fusion forward."""
     model = _make_hybrid(mc_samples=3)
     model.eval()
     batch = _make_batch(B=2)
 
-    # Enable grad for this test
     with torch.enable_grad():
         out = model(batch)
         loss = out["logits"].sum()
         loss.backward()
 
-    # Gate MLP receives gradients from the fusion forward (outside no_grad)
     assert model.fusion.gate_mlp[0].weight.grad is not None
 
 
@@ -186,7 +182,7 @@ def test_hybrid_only_student_forward():
     batch = _make_batch(B=2)
     out = model(batch)
     assert "logits" in out
-    assert out["logits"].shape == (2, 1)
+    assert out["logits"].shape == (2,)
 
 
 def test_hybrid_only_teacher_forward():
@@ -196,7 +192,7 @@ def test_hybrid_only_teacher_forward():
     batch = _make_batch(B=2)
     out = model(batch)
     assert "logits" in out
-    assert out["logits"].shape == (2, 1)
+    assert out["logits"].shape == (2,)
 
 
 def test_hybrid_is_hybrid_flag():

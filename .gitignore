@@ -76,6 +76,8 @@ data/raw/
 data/processed/
 data/*.tab
 data/cache/*/*.pt
+data/cache/*.pt
 
 # Agent
 .agent/
+.kiro/

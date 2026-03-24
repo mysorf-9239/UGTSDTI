@@ -1,4 +1,4 @@
-"""Unit tests for PairGateFusion.
+"""Unit tests for UncertaintyGatedFusion (UG fusion module).
 
 Covers:
 - Gate output range (α ∈ (0, 1))
@@ -12,11 +12,11 @@ Covers:
 import pytest
 import torch
 
-from ugtsdti.models.fusion.pairgate import PairGateFusion
+from ugtsdti.models.fusion.ug import UncertaintyGatedFusion
 
 
-def _make_fusion(mc_samples: int = 5, gate_hidden: int = 8) -> PairGateFusion:
-    return PairGateFusion(input_dim=1, gate_hidden=gate_hidden, mc_samples=mc_samples)
+def _make_fusion(mc_samples: int = 5, gate_hidden: int = 8) -> UncertaintyGatedFusion:
+    return UncertaintyGatedFusion(gate_hidden=gate_hidden, mc_samples=mc_samples)
 
 
 # ---------------------------------------------------------------------------
@@ -41,8 +41,8 @@ def test_mc_samples_zero():
 
 def test_fallback_equal_weight_no_vars():
     fusion = _make_fusion()
-    s = torch.tensor([[1.0], [3.0]])
-    t = torch.tensor([[3.0], [1.0]])
+    s = torch.tensor([1.0, 3.0])
+    t = torch.tensor([3.0, 1.0])
 
     out = fusion(s, t)
     expected = 0.5 * s + 0.5 * t
@@ -51,8 +51,8 @@ def test_fallback_equal_weight_no_vars():
 
 def test_fallback_student_var_none():
     fusion = _make_fusion()
-    s = torch.tensor([[2.0], [4.0]])
-    t = torch.tensor([[0.0], [2.0]])
+    s = torch.tensor([2.0, 4.0])
+    t = torch.tensor([0.0, 2.0])
     teacher_var = torch.tensor([0.1, 0.2])
 
     out = fusion(s, t, student_var=None, teacher_var=teacher_var)
@@ -62,8 +62,8 @@ def test_fallback_student_var_none():
 
 def test_fallback_teacher_var_none():
     fusion = _make_fusion()
-    s = torch.tensor([[2.0], [4.0]])
-    t = torch.tensor([[0.0], [2.0]])
+    s = torch.tensor([2.0, 4.0])
+    t = torch.tensor([0.0, 2.0])
     student_var = torch.tensor([0.1, 0.2])
 
     out = fusion(s, t, student_var=student_var, teacher_var=None)
@@ -80,28 +80,26 @@ def test_gate_weight_in_zero_one():
     """Gate MLP uses Sigmoid → output must be in (0, 1)."""
     fusion = _make_fusion()
     B = 8
-    s = torch.randn(B, 1)
-    t = torch.randn(B, 1)
+    s = torch.randn(B)
+    t = torch.randn(B)
     s_var = torch.rand(B).abs()
     t_var = torch.rand(B).abs()
 
     out = fusion(s, t, s_var, t_var)
-    # Fused output is a convex combination → must be between min(s,t) and max(s,t)
-    # (not strictly, but gate ∈ (0,1) means output is a blend)
-    assert out.shape == (B, 1)
+    assert out.shape == (B,)
     assert torch.isfinite(out).all()
 
 
 @pytest.mark.parametrize("B", [1, 2, 4, 8, 16])
 def test_output_shape(B):
     fusion = _make_fusion()
-    s = torch.randn(B, 1)
-    t = torch.randn(B, 1)
+    s = torch.randn(B)
+    t = torch.randn(B)
     s_var = torch.rand(B)
     t_var = torch.rand(B)
 
     out = fusion(s, t, s_var, t_var)
-    assert out.shape == (B, 1)
+    assert out.shape == (B,)
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +111,8 @@ def test_gradient_flows_through_gate():
     """Gate MLP parameters must receive gradients during backward."""
     fusion = _make_fusion()
     B = 4
-    s = torch.randn(B, 1, requires_grad=True)
-    t = torch.randn(B, 1, requires_grad=True)
+    s = torch.randn(B, requires_grad=True)
+    t = torch.randn(B, requires_grad=True)
     s_var = torch.rand(B)
     t_var = torch.rand(B)
 
@@ -122,11 +120,9 @@ def test_gradient_flows_through_gate():
     loss = out.sum()
     loss.backward()
 
-    # Gate MLP weights must have gradients
     for name, param in fusion.gate_mlp.named_parameters():
         assert param.grad is not None, f"No gradient for gate_mlp.{name}"
 
-    # Input logits must also have gradients
     assert s.grad is not None
     assert t.grad is not None
 
@@ -134,8 +130,8 @@ def test_gradient_flows_through_gate():
 def test_gradient_flows_in_fallback():
     """Gradients must flow even in fallback (equal-weight) mode."""
     fusion = _make_fusion()
-    s = torch.randn(2, 1, requires_grad=True)
-    t = torch.randn(2, 1, requires_grad=True)
+    s = torch.randn(2, requires_grad=True)
+    t = torch.randn(2, requires_grad=True)
 
     out = fusion(s, t)
     out.sum().backward()
@@ -150,26 +146,18 @@ def test_gradient_flows_in_fallback():
 
 
 def test_high_teacher_uncertainty_student_dominates():
-    """When teacher variance >> student variance, gate should weight student more.
-
-    With a freshly initialized gate MLP, we can't guarantee exact behavior,
-    but we verify the gate is responsive to variance inputs (output changes
-    when variance changes).
-    """
+    """Gate is responsive to variance inputs (output changes when variance changes)."""
     torch.manual_seed(0)
     fusion = _make_fusion()
     fusion.eval()
 
     B = 4
-    s = torch.ones(B, 1)
-    t = torch.ones(B, 1) * 2.0
+    s = torch.ones(B)
+    t = torch.ones(B) * 2.0
 
-    # Low teacher uncertainty
     out_low_t_var = fusion(s, t, student_var=torch.zeros(B), teacher_var=torch.zeros(B))
-    # High teacher uncertainty
     out_high_t_var = fusion(s, t, student_var=torch.zeros(B), teacher_var=torch.ones(B) * 100.0)
 
-    # Outputs must differ when uncertainty changes
     assert not torch.allclose(out_low_t_var, out_high_t_var)
 
 
@@ -185,8 +173,8 @@ def test_deterministic_in_eval_mode():
     fusion.eval()
 
     B = 4
-    s = torch.randn(B, 1)
-    t = torch.randn(B, 1)
+    s = torch.randn(B)
+    t = torch.randn(B)
     s_var = torch.rand(B)
     t_var = torch.rand(B)
 

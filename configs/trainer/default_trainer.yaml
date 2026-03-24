@@ -9,7 +9,7 @@ params:
   num_workers: 0
   output_dir: "./outputs/checkpoints"
 loss:
-  name: "bce_with_logits"
+  name: "bce"
 graph:
   warmup_epochs: 5
   rebuild_every: 10

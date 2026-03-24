@@ -35,7 +35,7 @@ def _make_hybrid(mc_samples: int = 5) -> HybridDTIModel:
     return HybridDTIModel(
         student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}},
         teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}},
-        fusion_cfg={"name": "pairgate_fusion", "params": {"input_dim": 1, "gate_hidden": 8, "mc_samples": mc_samples}},
+        fusion_cfg={"name": "ug_fusion", "params": {"gate_hidden": 8, "mc_samples": mc_samples}},
     )
 
 
@@ -55,17 +55,13 @@ def test_student_logits_equal_mean_of_mc_passes():
     model.eval()
     batch = _make_batch(B=2)
 
-    # Confirm student starts in eval mode
     assert not model.student.training
 
     out = model(batch)
-    reported_student = out["student_logits"]  # [B, 1]
+    reported_student = out["student_logits"]  # [B]
 
-    # After forward(), _mc_forward must have restored student to eval mode
     assert not model.student.training, "student branch must be restored to eval after _mc_forward"
-
-    # Shape must be correct
-    assert reported_student.shape == (2, 1)
+    assert reported_student.shape == (2,)
 
 
 def test_teacher_logits_equal_mean_of_mc_passes():
@@ -76,8 +72,7 @@ def test_teacher_logits_equal_mean_of_mc_passes():
     batch = _make_batch(B=2)
 
     out = model(batch)
-    assert out["teacher_logits"].shape == (2, 1)
-    # After forward(), teacher branch must be back in eval mode
+    assert out["teacher_logits"].shape == (2,)
     assert not model.teacher.training
 
 
@@ -94,13 +89,13 @@ def test_branch_restored_to_eval_after_mc_forward():
 
 
 def test_mc_forward_returns_correct_shapes():
-    """_mc_forward must return (mean_logit [B,1], epistemic_var [B])."""
+    """_mc_forward must return (mean_logit [B], epistemic_var [B])."""
     model = _make_hybrid(mc_samples=4)
     batch = _make_batch(B=3)
 
     mean_logit, epistemic_var = model._mc_forward(model.student, batch, mc_samples=4)
 
-    assert mean_logit.shape == (3, 1)
+    assert mean_logit.shape == (3,)
     assert epistemic_var.shape == (3,)
 
 
@@ -114,11 +109,7 @@ def test_mc_forward_var_nonnegative():
 
 
 def test_mc_forward_mean_and_var_from_same_tensor():
-    """mean_logit and epistemic_var must be mathematically consistent.
-
-    If we recompute mean and var from the same mc_logits, they must match
-    what _mc_forward returns (up to floating point).
-    """
+    """mean_logit and epistemic_var must be mathematically consistent."""
     torch.manual_seed(42)
     model = _make_hybrid(mc_samples=6)
     batch = _make_batch(B=2)
@@ -126,22 +117,20 @@ def test_mc_forward_mean_and_var_from_same_tensor():
     # Manually replicate _mc_forward logic
     model.student.train()
     with torch.no_grad():
-        mc_logits = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)  # [B, 1, 6]
+        mc_logits = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)  # [B, 6]
     model.student.eval()
 
-    expected_mean = mc_logits.mean(dim=-1)
-    expected_var = mc_logits.var(dim=-1).squeeze(-1)
+    expected_mean = mc_logits.mean(dim=-1)  # [B]
+    expected_var = mc_logits.var(dim=-1)  # [B]
 
-    # Run _mc_forward with same seed
     torch.manual_seed(42)
     model.student.train()
     with torch.no_grad():
         mc_logits2 = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)
     model.student.eval()
     actual_mean = mc_logits2.mean(dim=-1)
-    actual_var = mc_logits2.var(dim=-1).squeeze(-1)
+    actual_var = mc_logits2.var(dim=-1)
 
-    # Both must have same shapes and be finite
     assert actual_mean.shape == expected_mean.shape
     assert actual_var.shape == expected_var.shape
     assert torch.isfinite(actual_mean).all()
@@ -200,19 +189,19 @@ def test_teacher_branch_called_exactly_once_in_training_mode():
 
 @pytest.mark.parametrize("B", [1, 2, 4, 8])
 def test_only_student_output_shape_and_key(B):
-    """only_student mode: output has key 'logits' with shape (B, 1)."""
+    """only_student mode: output has key 'logits' with shape (B,)."""
     model = HybridDTIModel(student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}})
     model.eval()
     batch = _make_batch(B=B)
     out = model(batch)
 
     assert set(out.keys()) == {"logits"}
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4, 8])
 def test_only_teacher_output_shape_and_key(B):
-    """only_teacher mode: output has key 'logits' with shape (B, 1)."""
+    """only_teacher mode: output has key 'logits' with shape (B,)."""
     model = HybridDTIModel(
         teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}}
     )
@@ -221,7 +210,7 @@ def test_only_teacher_output_shape_and_key(B):
     out = model(batch)
 
     assert set(out.keys()) == {"logits"}
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
 
 
 def test_mc_samples_zero_uses_equal_weight_fusion():
@@ -241,10 +230,9 @@ def test_mc_samples_zero_uses_equal_weight_fusion():
     with patch.object(model.student, "forward", side_effect=counting_student):
         out = model(batch)
 
-    # mc_samples=0 → single pass, no MC
     assert student_call_count == 1
     assert "logits" in out
-    assert out["logits"].shape == (2, 1)
+    assert out["logits"].shape == (2,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4])
@@ -256,9 +244,9 @@ def test_hybrid_output_dict_keys_eval_mode(B):
     out = model(batch)
 
     assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
-    assert out["logits"].shape == (B, 1)
-    assert out["student_logits"].shape == (B, 1)
-    assert out["teacher_logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
+    assert out["student_logits"].shape == (B,)
+    assert out["teacher_logits"].shape == (B,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4])
@@ -270,7 +258,7 @@ def test_hybrid_output_dict_keys_training_mode(B):
     out = model(batch)
 
     assert set(out.keys()) == {"logits", "student_logits", "teacher_logits"}
-    assert out["logits"].shape == (B, 1)
+    assert out["logits"].shape == (B,)
 
 
 def test_no_model_raises():

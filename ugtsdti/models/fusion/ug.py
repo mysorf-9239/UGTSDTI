@@ -1,0 +1,85 @@
+"""Uncertainty-Gated (UG) fusion module for UGTS-DTI.
+
+This module implements the core fusion strategy of the UGTS-DTI architecture:
+blending Teacher and Student predictions using MC-Dropout epistemic uncertainty
+as a soft gate signal.
+
+Architecture:
+    α = σ(MLP([var_student, var_teacher]))   # gate weight ∈ (0, 1)
+    ŷ = α · logit_teacher + (1 − α) · logit_student
+
+When Teacher is confident (low var_teacher) and Student is uncertain
+(high var_student), α → 1 → Teacher dominates (warm-start / S1 split).
+When Teacher is uncertain (cold-start / S4 split), α → 0 → Student dominates.
+"""
+
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+
+from ugtsdti.core.registry import MODELS
+
+
+@MODELS.register("ug_fusion")
+class UncertaintyGatedFusion(nn.Module):
+    """Uncertainty-Gated fusion module (UG).
+
+    Computes a soft gate weight ``α`` from the MC-Dropout epistemic uncertainty
+    pair ``(var_student, var_teacher)`` via a small MLP, then blends Student
+    and Teacher logits adaptively per sample:
+
+        α = σ(MLP([var_s, var_t]))
+        ŷ = α · logit_teacher + (1 − α) · logit_student
+
+    When ``student_var`` / ``teacher_var`` are not provided (e.g., ablation
+    without MC-Dropout), falls back to a simple equal-weight average.
+
+    Args:
+        gate_hidden: Hidden dimension of the gate MLP.
+        mc_samples: Number of MC-Dropout forward passes used upstream to
+            estimate uncertainty. Stored so ``HybridDTIModel`` can detect
+            it via duck-typing.
+        input_dim: Unused; kept for config backward-compatibility.
+    """
+
+    def __init__(self, gate_hidden: int, mc_samples: int = 5, input_dim: int = 1):
+        super().__init__()
+        self.mc_samples = mc_samples
+
+        # Gate MLP: (var_s, var_t) → α ∈ (0, 1)
+        self.gate_mlp = nn.Sequential(
+            nn.Linear(2, gate_hidden),
+            nn.ReLU(),
+            nn.Linear(gate_hidden, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(
+        self,
+        student_logits: torch.Tensor,
+        teacher_logits: torch.Tensor,
+        student_var: torch.Tensor | None = None,
+        teacher_var: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Fuse Student and Teacher predictions via uncertainty-gated blending.
+
+        Args:
+            student_logits: Shape ``(B,)`` or ``(B, 1)``.
+            teacher_logits: Shape ``(B,)`` or ``(B, 1)``.
+            student_var: MC-Dropout epistemic variance of Student. Shape ``(B,)``.
+            teacher_var: MC-Dropout epistemic variance of Teacher. Shape ``(B,)``.
+
+        Returns:
+            Fused logits, same shape as inputs.
+        """
+        if student_var is None or teacher_var is None:
+            # Fallback: equal-weight average (no uncertainty information)
+            return (0.5 * student_logits + 0.5 * teacher_logits).view(-1)
+
+        # Stack uncertainty pair → gate MLP → α
+        uncertainty_pair = torch.stack([student_var, teacher_var], dim=-1)  # (B, 2)
+        alpha = self.gate_mlp(uncertainty_pair).view(-1)  # (B,), α ∈ (0, 1)
+
+        fused = alpha * teacher_logits + (1.0 - alpha) * student_logits
+        return fused.view(-1)  # ensure (B,) even when B=1

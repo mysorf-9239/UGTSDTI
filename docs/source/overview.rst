@@ -50,7 +50,7 @@ Architecture
             H["ŷ_t = Mean(logit_t^1..N)\nvar_t = Var(logit_t^1..N)"]
         end
 
-        subgraph Fusion["PairGate Fusion"]
+        subgraph Fusion["UG Fusion (Uncertainty-Gated)"]
             I["Gate MLP\n[var_s, var_t] → α ∈ (0,1)"]
             J["ŷ = α · logit_t + (1−α) · logit_s"]
         end
@@ -74,8 +74,8 @@ Ablation modes
         A["HybridDTIModel"] --> B{student_cfg\nteacher_cfg\nfusion_cfg}
         B -->|student only| C["only_student\nBaseline: sequence encoder alone"]
         B -->|teacher only| D["only_teacher\nBaseline: graph encoder alone"]
-        B -->|all three| E["hybrid_baseline\nPairGate fusion · BCE loss"]
-        B -->|all three + KD| F["hybrid_kd\nPairGate fusion · KDDualLoss"]
+        B -->|all three| E["gcn.baseline.ug\nUG fusion · BCE loss"]
+        B -->|all three + KD| F["gcn.baseline.ug\nUG fusion · KDLoss"]
 
 Research novelty
 ----------------

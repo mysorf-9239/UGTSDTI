@@ -1,6 +1,6 @@
 # ugtsdti/models/__init__.py
 
-from .fusion.pairgate import PairGateFusion
+from .fusion.ug import UncertaintyGatedFusion
 from .hybrid import HybridDTIModel
 from .student.baseline import BaselineStudent
 from .student.plm import ESMProteinStudent
@@ -11,7 +11,7 @@ __all__ = [
     "BaselineStudent",
     "BaselineTeacher",
     "GCNTeacher",
-    "PairGateFusion",
+    "UncertaintyGatedFusion",
     "HybridDTIModel",
     "ESMProteinStudent",
 ]
