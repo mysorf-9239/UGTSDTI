@@ -24,3 +24,12 @@ ugtsdti.data.transforms subpackage
    :undoc-members:
    :show-inheritance:
    :member-order: bysource
+
+ugtsdti.data.protocols subpackage
+-----------------------------------
+
+.. automodule:: ugtsdti.data.protocols
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :member-order: bysource

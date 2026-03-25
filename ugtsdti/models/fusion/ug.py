@@ -37,16 +37,26 @@ class UncertaintyGatedFusion(nn.Module):
 
     Args:
         gate_hidden: Hidden dimension of the gate MLP.
-        mc_samples: Number of MC-Dropout forward passes used upstream to
-            estimate uncertainty. Stored so ``HybridDTIModel`` can detect
-            it via duck-typing.
+        mc_samples: Backward-compatible default MC sample count used for both
+            train and eval when split-specific values are not provided.
+        train_mc_samples: Optional MC sample count for train-time uncertainty.
+        eval_mc_samples: Optional MC sample count for eval-time uncertainty.
         input_dim: Unused; kept for config backward-compatibility.
     """
 
-    def __init__(self, gate_hidden: int, mc_samples: int = 5, input_dim: int = 1):
+    def __init__(
+        self,
+        gate_hidden: int,
+        mc_samples: int = 5,
+        train_mc_samples: int | None = None,
+        eval_mc_samples: int | None = None,
+        input_dim: int = 1,
+    ):
         super().__init__()
         self.mc_samples = mc_samples
-        self.use_uncertainty_in_train = mc_samples > 0
+        self.train_mc_samples = mc_samples if train_mc_samples is None else train_mc_samples
+        self.eval_mc_samples = mc_samples if eval_mc_samples is None else eval_mc_samples
+        self.use_uncertainty_in_train = self.train_mc_samples > 0
 
         # Gate MLP: (var_s, var_t) → α ∈ (0, 1)
         self.gate_mlp = nn.Sequential(

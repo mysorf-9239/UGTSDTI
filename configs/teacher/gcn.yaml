@@ -1,4 +1,5 @@
-name: gcn_teacher
+alias: "gcn"
+name: "gcn_teacher"
 params:
   drug_feat_dim: 2048
   protein_feat_dim: 8000

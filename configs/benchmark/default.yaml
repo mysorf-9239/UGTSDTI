@@ -1,0 +1,22 @@
+output_root: "./outputs/benchmarks/default"
+trainer_config: "default_trainer"
+probe_protocols: true
+experiments:
+  - name: "hybrid_gcn_baseline_ug"
+    model: "hybrid"
+    teacher: "gcn"
+    student: "baseline"
+    fusion: "ug"
+losses:
+  - "bce"
+  - "kd"
+data_configs:
+  - "tdc_davis_s1"
+  - "tdc_davis_s2"
+  - "tdc_davis_s3"
+  - "tdc_davis_s4"
+seeds:
+  - 42
+
+logging:
+  wandb_enabled: false

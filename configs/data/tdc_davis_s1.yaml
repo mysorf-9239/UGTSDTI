@@ -3,7 +3,7 @@ train:
   params:
     name: "DAVIS"
     split: "train"
-    split_type: "random_split"
+    split_type: "random"
     column_name: null
     frac: [0.8, 0.1, 0.1]
     seed: 42
@@ -16,7 +16,7 @@ val:
   params:
     name: "DAVIS"
     split: "valid"
-    split_type: "random_split"
+    split_type: "random"
     column_name: null
     frac: [0.8, 0.1, 0.1]
     seed: 42
@@ -29,7 +29,7 @@ test:
   params:
     name: "DAVIS"
     split: "test"
-    split_type: "random_split"
+    split_type: "random"
     column_name: null
     frac: [0.8, 0.1, 0.1]
     seed: 42

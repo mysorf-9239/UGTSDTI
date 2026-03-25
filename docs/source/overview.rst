@@ -1,97 +1,87 @@
 Overview
 ========
 
-The Cold-Start Problem
-----------------------
+Research Goal
+-------------
 
-Standard DTI benchmarks define four evaluation scenarios based on whether drugs and targets
-appeared during training:
+UGTSDTI asks whether a DTI system can adapt across warm-start and cold-start regimes
+without committing to only one encoder family.
 
-+----------+---------------+-----------------+-----------------------------------+
-| Scenario | Drug in train | Target in train | Difficulty                        |
-+==========+===============+=================+===================================+
-| **S1**   | ✓             | ✓               | Easy — warm start                 |
-+----------+---------------+-----------------+-----------------------------------+
-| **S2**   | ✗             | ✓               | Medium — cold drug                |
-+----------+---------------+-----------------+-----------------------------------+
-| **S3**   | ✓             | ✗               | Medium — cold target              |
-+----------+---------------+-----------------+-----------------------------------+
-| **S4**   | ✗             | ✗               | Hard — fully cold, most realistic |
-+----------+---------------+-----------------+-----------------------------------+
+- The **teacher** is transductive and strongest when train-time entity structure is available.
+- The **student** is inductive and remains usable when drugs or targets are unseen.
+- The **UG gate** should learn when to trust each branch from uncertainty rather than from a fixed rule.
 
-Graph-based (transductive) models excel at S1 but collapse at S4 because new nodes have no
-embedding in the graph. Sequence-based (inductive) models generalise better but underperform
-at S1 where graph context is available. UGTSDTI aims to handle all four scenarios with a
-single adaptive model.
+Cold-Start Scenarios
+--------------------
 
-Architecture
-------------
++----------+---------------+-----------------+-------------------------+
+| Scenario | Drug in train | Target in train | Meaning                 |
++==========+===============+=================+=========================+
+| ``S1``   | ✓             | ✓               | warm-start              |
++----------+---------------+-----------------+-------------------------+
+| ``S2``   | ✗             | ✓               | cold drug               |
++----------+---------------+-----------------+-------------------------+
+| ``S3``   | ✓             | ✗               | cold target             |
++----------+---------------+-----------------+-------------------------+
+| ``S4``   | ✗             | ✗               | fully cold              |
++----------+---------------+-----------------+-------------------------+
+
+System Architecture
+-------------------
 
 .. mermaid::
 
     flowchart LR
-        subgraph Input
-            A["Drug SMILES"]
-            B["Drug Node ID / Protein Node ID"]
-        end
+        Cfg["Hydra Config\nmodel / teacher / student / fusion / loss / data"] --> Compose["Experiment Resolver"]
+        Compose --> Model["HybridDTIModel"]
+        Compose --> Data["TDCCachingDataset"]
+        Compose --> Loss["BCELoss / KDLoss"]
 
-        subgraph Student["Student Branch (Inductive)"]
-            C["Sequence Encoder\nSMILES → PyG Graph\nFASTA → ESM Tokens"]
-            D["logit_s (train) / ŷ_s (eval)"]
-        end
+        Model --> Student["Student Plugin"]
+        Model --> Teacher["Teacher Plugin"]
+        Model --> Fusion["Fusion Plugin"]
 
-        subgraph Teacher["Teacher Branch (Transductive)"]
-            E["GNN Encoder\nDD + PP Similarity Graph\n(GAT / GCN)"]
-            F["logit_t (train) / ŷ_t (eval)"]
-        end
+Research Architecture
+---------------------
 
-        subgraph MC["MC-Dropout (eval mode, N passes)"]
-            G["ŷ_s = Mean(logit_s^1..N)\nvar_s = Var(logit_s^1..N)"]
-            H["ŷ_t = Mean(logit_t^1..N)\nvar_t = Var(logit_t^1..N)"]
-        end
+.. mermaid::
 
-        subgraph Fusion["UG Fusion (Uncertainty-Gated)"]
-            I["Gate MLP\n[var_s, var_t] → α ∈ (0,1)"]
-            J["ŷ = α · logit_t + (1−α) · logit_s"]
-        end
+    flowchart LR
+        Batch["Batch"] --> Student["Student\ninductive"]
+        Batch --> Teacher["Teacher\ntransductive"]
 
-        A --> C --> D --> G
-        B --> E --> F --> H
-        G --> I
-        H --> I
-        D --> J
-        F --> J
-        I --> J
+        Student --> SLogit["student_logits"]
+        Teacher --> TLogit["teacher_logits"]
 
-Ablation modes
+        Student --> SVar["MC-Dropout\nstudent_var"]
+        Teacher --> TVar["MC-Dropout\nteacher_var"]
+
+        SVar --> Gate["UG Gate\nalpha = MLP(var_s, var_t)"]
+        TVar --> Gate
+        SLogit --> Fuse["fused logits"]
+        TLogit --> Fuse
+        Gate --> Fuse
+
+Ablation Modes
 --------------
 
-``HybridDTIModel`` natively supports four configurations via Hydra config:
-
 .. mermaid::
 
     flowchart LR
-        A["HybridDTIModel"] --> B{student_cfg\nteacher_cfg\nfusion_cfg}
-        B -->|student only| C["only_student\nBaseline: sequence encoder alone"]
-        B -->|teacher only| D["only_teacher\nBaseline: graph encoder alone"]
-        B -->|all three| E["gcn.baseline.ug\nUG fusion · BCE loss"]
-        B -->|all three + KD| F["gcn.baseline.ug\nUG fusion · KDLoss"]
+        A["HybridDTIModel"] --> B{teacher / student / fusion}
+        B --> C["teacher=none\nstudent=baseline\nfusion=none"]
+        B --> D["teacher=gcn\nstudent=none\nfusion=none"]
+        B --> E["teacher=gcn\nstudent=baseline\nfusion=ug"]
+        B --> F["teacher=gcn\nstudent=baseline\nfusion=ug\nloss=kd"]
 
-Research novelty
-----------------
+What Is Verified In Code
+------------------------
 
-Adaptive fusion driven by epistemic uncertainty is not common in DTI literature. Most SOTA
-models commit to one encoder type and do not handle the warm/cold transition automatically.
-UGTSDTI's PairGate learns *when* to trust each branch based on how uncertain each branch is
-about a given sample — a property that emerges naturally from MC-Dropout variance.
+The current codebase explicitly supports and audits:
 
-The key correctness property (Gal & Ghahramani, 2016): both the prediction logit and the
-epistemic variance must come from the **same** set of stochastic forward passes:
-
-.. math::
-
-    \hat{y}_s = \frac{1}{N} \sum_{n=1}^{N} f_s^{(n)}(x), \quad
-    \sigma^2_s = \frac{1}{N} \sum_{n=1}^{N} \left( f_s^{(n)}(x) - \hat{y}_s \right)^2
-
-where :math:`f_s^{(n)}` denotes the :math:`n`-th stochastic forward pass of the student branch
-with dropout active.
+- slot-based experiment configuration
+- train/eval MC-Dropout budgets
+- teacher train-based namespace with `UNK`
+- runtime split audit
+- benchmark protocol probing
+- branch-wise and gate-wise evaluation metrics

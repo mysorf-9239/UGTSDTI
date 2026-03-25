@@ -6,10 +6,8 @@ Covers:
 - extract_atom_features / extract_bond_features: feature length, unknown vocab
 - _safe_index: in-vocab and out-of-vocab
 - ESMSequenceTokenizer: output shapes, padding, truncation (mocked)
-- MD5 hash determinism (used in TDCCachingDataset)
 """
 
-import hashlib
 from unittest.mock import patch
 
 import torch
@@ -203,37 +201,3 @@ def test_tokenizer_respects_max_length(MockAutoTokenizer):
     out = tok.encode("MVLSPADKTN")
     assert out["input_ids"].size(0) == max_len
     assert out["attention_mask"].size(0) == max_len
-
-
-# ---------------------------------------------------------------------------
-# MD5 hash determinism (used in TDCCachingDataset)
-# ---------------------------------------------------------------------------
-
-
-def test_md5_hash_deterministic():
-    """Same SMILES must always produce the same drug_index."""
-    smiles = "CC(=O)OC1=CC=CC=C1C(=O)O"
-    _HASH_MODULUS = 100_003
-
-    idx1 = int(hashlib.md5(smiles.encode()).hexdigest(), 16) % _HASH_MODULUS
-    idx2 = int(hashlib.md5(smiles.encode()).hexdigest(), 16) % _HASH_MODULUS
-    assert idx1 == idx2
-
-
-def test_md5_hash_different_smiles():
-    """Different SMILES must (almost certainly) produce different indices."""
-    _HASH_MODULUS = 100_003
-    smiles_a = "CCO"
-    smiles_b = "CC(=O)OC1=CC=CC=C1C(=O)O"
-
-    idx_a = int(hashlib.md5(smiles_a.encode()).hexdigest(), 16) % _HASH_MODULUS
-    idx_b = int(hashlib.md5(smiles_b.encode()).hexdigest(), 16) % _HASH_MODULUS
-    assert idx_a != idx_b
-
-
-def test_md5_hash_in_valid_range():
-    """drug_index must be in [0, _HASH_MODULUS)."""
-    _HASH_MODULUS = 100_003
-    for smiles in ["CCO", "CC(=O)O", "c1ccccc1", "[Na+]"]:
-        idx = int(hashlib.md5(smiles.encode()).hexdigest(), 16) % _HASH_MODULUS
-        assert 0 <= idx < _HASH_MODULUS

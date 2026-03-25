@@ -8,8 +8,7 @@ params:
   batch_size: 32
   num_workers: 0
   output_dir: "./outputs/checkpoints"
-loss:
-  name: "bce"
+loss: ${loss}
 graph:
   warmup_epochs: 5
   rebuild_every: 10

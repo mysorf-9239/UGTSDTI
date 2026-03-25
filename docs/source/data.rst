@@ -4,135 +4,99 @@ Data Pipeline
 Overview
 --------
 
-Data is fetched automatically via `PyTDC <https://tdcommons.ai/>`_ and cached to
-``data/cache/`` as ``.pt`` files after the first run. Subsequent runs load directly from
-cache, avoiding re-running RDKit and ESM tokenisation.
+UGTSDTI data flow is built around three ideas:
+
+- explicit `S1-S4` split protocols
+- scenario-bundle caching
+- train-based teacher namespace with `UNK` handling
 
 .. mermaid::
 
     flowchart TD
-        A["PyTDC API\nDAVIS / KIBA / BindingDB"] --> B["Split\nrandom_split → S1\ncold_split(Drug) → S2\ncold_split(Target) → S3\ncold_split(None) → S4"]
-        B --> C["Negative Sampling\n(handled by PyTDC)"]
-        C --> D{".pt cache exists?"}
-        D -- Yes --> E["Load from data/cache/"]
-        D -- No --> F["RDKit\nSMILES → PyG molecular graph\n7 atom features · 3 bond features"]
-        F --> G["ESMSequenceTokenizer\nFASTA → input_ids, attention_mask"]
-        G --> H["MD5 hash → drug_index, target_index\nfor Teacher transductive lookup"]
-        H --> I["torch.save → data/cache/*.pt"]
-        I --> E
-        E --> J["PyG DataLoader → Trainer"]
+        TDC["PyTDC dataset"] --> Split["Scenario split\nS1 / S2 / S3 / S4"]
+        Split --> Cache["Scenario bundle cache\ntrain / valid / test"]
+        Cache --> Drug["SMILES -> PyG graph"]
+        Cache --> Target["FASTA -> token ids + mask"]
+        Cache --> Vocab["Train-based vocab\n+ UNK indices"]
+        Vocab --> Batch["Batch dict"]
+        Drug --> Batch
+        Target --> Batch
 
-Datasets
---------
+Current Data Subpackages
+------------------------
 
-+------------+----------------------+------------------------+--------+
-| Dataset    | Affinity type        | Binarization threshold | Splits |
-+============+======================+========================+========+
-| DAVIS      | Kd (nM)              | pKd ≥ 7.0              | S1, S4 |
-+------------+----------------------+------------------------+--------+
-| KIBA       | Composite KIBA score | —                      | S1, S4 |
-+------------+----------------------+------------------------+--------+
-| BindingDB  | Kd (nM)              | pKd ≥ 7.0              | S1     |
-+------------+----------------------+------------------------+--------+
+- ``ugtsdti.data.datasets``: dataset classes
+- ``ugtsdti.data.transforms``: feature extraction/tokenization
+- ``ugtsdti.data.protocols``: split probing and runtime audit
+- ``ugtsdti.data.graph_builder``: teacher similarity graphs
 
-Batch format
+Batch Format
 ------------
 
-``TDCCachingDataset.__getitem__`` returns a dict. ``PyG DataLoader`` collates these
-recursively into a batched dict:
+``TDCCachingDataset.__getitem__`` returns a dict with:
 
-+------------------+-------------+------------+----------------------------------+
-| Key              | Type        | Shape      | Used by                          |
-+==================+=============+============+==================================+
-| ``drug``         | PyG Data    | variable   | Student (drug branch)            |
-+------------------+-------------+------------+----------------------------------+
-| ``target_ids``   | LongTensor  | [seq_len]  | Student (protein branch)         |
-+------------------+-------------+------------+----------------------------------+
-| ``target_mask``  | LongTensor  | [seq_len]  | Student (protein branch)         |
-+------------------+-------------+------------+----------------------------------+
-| ``label``        | FloatTensor | [1]        | Trainer (loss)                   |
-+------------------+-------------+------------+----------------------------------+
-| ``drug_index``   | LongTensor  | [1]        | Teacher (transductive lookup)    |
-+------------------+-------------+------------+----------------------------------+
-| ``target_index`` | LongTensor  | [1]        | Teacher (transductive lookup)    |
-+------------------+-------------+------------+----------------------------------+
++------------------+----------------------------------+
+| Key              | Used by                          |
++==================+==================================+
+| ``drug``         | student drug encoder             |
++------------------+----------------------------------+
+| ``target_ids``   | student target encoder           |
++------------------+----------------------------------+
+| ``target_mask``  | student target encoder           |
++------------------+----------------------------------+
+| ``label``        | loss / metrics                   |
++------------------+----------------------------------+
+| ``drug_index``   | teacher lookup                   |
++------------------+----------------------------------+
+| ``target_index`` | teacher lookup                   |
++------------------+----------------------------------+
 
-``drug_index`` and ``target_index`` are shared train-based entity IDs for the teacher branch.
-Validation/test entities unseen in train are mapped to an explicit ``UNK`` slot so the
-teacher remains transductive while the student stays inductive.
+Teacher Namespace
+-----------------
 
-Molecular graph features
-------------------------
+Teacher IDs are intentionally **train-based**.
 
-``smiles_to_graph`` (``ugtsdti/data/transforms/chemistry.py``) extracts OGB-standard features:
+- train entities define the shared teacher namespace
+- validation/test entities unseen in train are mapped to `UNK`
+- this preserves transductive semantics without leaking validation/test nodes into the teacher graph
 
-**Node features** (7 per atom):
-
-1. Atomic number (vocabulary of 118 elements)
-2. Total degree
-3. Formal charge
-4. Number of radical electrons
-5. Hybridisation (SP, SP2, SP3, …)
-6. Is aromatic
-7. Is in ring
-
-**Edge features** (3 per bond, both directions):
-
-1. Bond type (SINGLE, DOUBLE, TRIPLE, AROMATIC, …)
-2. Is conjugated
-3. Is in ring
-
-Negative sampling policy
-------------------------
-
-DAVIS (and most PyTDC DTI datasets) contains **only positive pairs** — no negative sampling
-is applied here. If negative sampling is added in the future, it **must** occur *per-split*
-(after ``dataset.get_split()`` returns the train/valid/test subsets). Global negative
-sampling before the split would cause data leakage between splits, invalidating all metrics.
-
-Correct order::
-
-    split_dict = dataset.get_split(...)   # split first
-    for split_name, split_df in split_dict.items():
-        split_df = add_negatives(split_df)  # then sample negatives per split
-
-Config reference
-----------------
-
-.. code-block:: yaml
-
-    # configs/data/tdc_davis_s2.yaml
-    train:
-      name: tdc_caching_dataset
-      params:
-        name: DAVIS
-        split: train
-        split_type: cold_split
-        column_name: Drug
-        cache_dir: ./data/cache
-        seed: 42
-
-    val:
-      name: tdc_caching_dataset
-      params:
-        name: DAVIS
-        split: valid          # PyTDC key for validation split
-        split_type: cold_split
-        column_name: Drug
-        cache_dir: ./data/cache
-        seed: 42
-
-Benchmark scenarios
+Protocol Validation
 -------------------
 
-+------------+--------------------------------------+------------------+
-| Scenario   | Meaning                              | Hydra data config |
-+============+======================================+==================+
-| ``S1``     | warm-start / random split            | ``tdc_davis_s1`` |
-+------------+--------------------------------------+------------------+
-| ``S2``     | cold drug                            | ``tdc_davis_s2`` |
-+------------+--------------------------------------+------------------+
-| ``S3``     | cold target                          | ``tdc_davis_s3`` |
-+------------+--------------------------------------+------------------+
-| ``S4``     | fully cold via PyTDC global cold split | ``tdc_davis_s4`` |
-+------------+--------------------------------------+------------------+
+Split semantics are validated at two levels:
+
+1. runtime audit via ``ugtsdti.data.protocols.audit``
+2. direct PyTDC probing via ``ugtsdti.data.protocols.probe``
+
+This is how the repo verifies that:
+
+- `S1` overlaps on both drugs and targets
+- `S2` is cold on drugs
+- `S3` is cold on targets
+- `S4` is cold on both
+
+Caching
+-------
+
+The dataset now caches per scenario bundle instead of per isolated split.
+
+Benefits:
+
+- one `get_split()` build per scenario
+- shared tokenizer work across train/valid/test
+- explicit bundle metadata for provenance
+
+Benchmark Scenarios
+-------------------
+
++------------+-------------------------------+--------------------+
+| Scenario   | Meaning                       | Hydra config       |
++============+===============================+====================+
+| ``S1``     | warm-start                    | ``tdc_davis_s1``   |
++------------+-------------------------------+--------------------+
+| ``S2``     | cold drug                     | ``tdc_davis_s2``   |
++------------+-------------------------------+--------------------+
+| ``S3``     | cold target                   | ``tdc_davis_s3``   |
++------------+-------------------------------+--------------------+
+| ``S4``     | fully cold                    | ``tdc_davis_s4``   |
++------------+-------------------------------+--------------------+

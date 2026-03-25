@@ -97,11 +97,13 @@ def test_hybrid_forward_training_mode(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
     assert out["student_logits"].shape == (B,)
     assert out["teacher_logits"].shape == (B,)
     assert out["gate_alpha"].shape == (B,)
+    assert out["student_var"].shape == (B,)
+    assert out["teacher_var"].shape == (B,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4])
@@ -111,9 +113,11 @@ def test_hybrid_forward_eval_mode_mc(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
     assert out["gate_alpha"].shape == (B,)
+    assert out["student_var"].shape == (B,)
+    assert out["teacher_var"].shape == (B,)
 
 
 def test_hybrid_forward_output_finite():
@@ -121,7 +125,7 @@ def test_hybrid_forward_output_finite():
     model.eval()
     batch = _make_batch(B=4)
     out = model(batch)
-    for key in ("logits", "student_logits", "teacher_logits", "gate_alpha"):
+    for key in ("logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"):
         assert torch.isfinite(out[key]).all()
 
 
@@ -142,8 +146,11 @@ def test_hybrid_only_student_forward():
     model = HybridDTIModel(student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}})
     batch = _make_batch(B=2)
     out = model(batch)
-    assert "logits" in out
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (2,)
+    assert out["student_logits"].shape == (2,)
+    assert out["teacher_logits"] is None
+    assert out["gate_alpha"] is None
 
 
 def test_hybrid_only_teacher_forward():
@@ -152,8 +159,11 @@ def test_hybrid_only_teacher_forward():
     )
     batch = _make_batch(B=2)
     out = model(batch)
-    assert "logits" in out
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (2,)
+    assert out["teacher_logits"].shape == (2,)
+    assert out["student_logits"] is None
+    assert out["gate_alpha"] is None
 
 
 def test_hybrid_is_hybrid_flag():

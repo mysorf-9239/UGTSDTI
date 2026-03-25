@@ -4,7 +4,7 @@ train:
     name: "DAVIS"
     split: "train"
     split_type: "cold_split"
-    column_name: null
+    column_name: ["Drug", "Target"]
     frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
@@ -17,7 +17,7 @@ val:
     name: "DAVIS"
     split: "valid"
     split_type: "cold_split"
-    column_name: null
+    column_name: ["Drug", "Target"]
     frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true
@@ -30,7 +30,7 @@ test:
     name: "DAVIS"
     split: "test"
     split_type: "cold_split"
-    column_name: null
+    column_name: ["Drug", "Target"]
     frac: [0.8, 0.1, 0.1]
     seed: 42
     binarize_labels: true

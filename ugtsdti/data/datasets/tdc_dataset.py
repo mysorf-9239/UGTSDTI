@@ -1,5 +1,5 @@
 import os
-from typing import Sequence
+from typing import Any, Sequence
 
 import torch
 from loguru import logger
@@ -11,6 +11,30 @@ try:
     from tdc.multi_pred import DTI
 except ImportError:
     DTI = None
+
+
+def normalize_tdc_split_method(split_type: str) -> str:
+    """Normalize repo split aliases to the method names expected by PyTDC."""
+    aliases = {
+        "random_split": "random",
+        "random": "random",
+        "cold_split": "cold_split",
+        "cold": "cold_split",
+        "time_split": "time",
+        "time": "time",
+        "combination_split": "combination",
+        "combination": "combination",
+    }
+    return aliases.get(split_type, split_type)
+
+
+def normalize_tdc_column_name(column_name: str | Sequence[str] | None) -> str | list[str] | None:
+    """Normalize cold-split column selection for consistent scenario handling."""
+    if column_name is None:
+        return None
+    if isinstance(column_name, str):
+        return column_name
+    return list(column_name)
 
 
 @DATASETS.register("tdc_caching_dataset")
@@ -45,7 +69,7 @@ class TDCCachingDataset(Dataset):
         name: str,
         split: str = "train",
         split_type: str = "cold_split",
-        column_name: str | None = "Drug",
+        column_name: str | Sequence[str] | None = "Drug",
         frac: Sequence[float] | None = None,
         cache_dir: str = "./data/cache",
         seed: int = 42,
@@ -62,7 +86,11 @@ class TDCCachingDataset(Dataset):
         self.split = split
         self.binarize_labels = binarize_labels
         self.affinity_threshold = affinity_threshold
-        self.scenario_name = scenario_name or self._infer_scenario_name(split_type=split_type, column_name=column_name)
+        normalized_column_name = normalize_tdc_column_name(column_name)
+        self.scenario_name = scenario_name or self._infer_scenario_name(
+            split_type=split_type, column_name=normalized_column_name
+        )
+        split_method = normalize_tdc_split_method(split_type)
 
         self.cache_root = os.path.join(cache_dir, f"{name}_{self.scenario_name}_{seed}")
         self.cache_dir = os.path.join(self.cache_root, split)
@@ -71,6 +99,7 @@ class TDCCachingDataset(Dataset):
         self.cache_file = os.path.join(self.cache_dir, "dataset.pt")
         self.vocab_file = os.path.join(self.cache_root, "entity_vocab.pt")
         self.graph_cache_path = os.path.join(self.cache_root, "similarity_graphs.pt")
+        self.bundle_metadata_file = os.path.join(self.cache_root, "bundle_metadata.pt")
         split_frac = list(frac) if frac is not None else [0.8, 0.1, 0.1]
 
         # Public attributes: set after loading/building
@@ -78,80 +107,44 @@ class TDCCachingDataset(Dataset):
         self.num_unique_targets: int | None = None
         self.unique_smiles: list[str] | None = None
         self.unique_fasta: list[str] | None = None
+        self.split_unique_smiles: list[str] | None = None
+        self.split_unique_fasta: list[str] | None = None
         self.unk_drug_index: int | None = None
         self.unk_target_index: int | None = None
 
         if os.path.exists(self.cache_file):
             logger.info(f"Loading cached {split} dataset from {self.cache_file}")
-            cached = torch.load(self.cache_file, weights_only=False)
-            self.data = cached["samples"]
-            self.num_unique_drugs = cached.get("num_unique_drugs")
-            self.num_unique_targets = cached.get("num_unique_targets")
-            self.unique_smiles = cached.get("unique_smiles")
-            self.unique_fasta = cached.get("unique_fasta")
-            self.unk_drug_index = cached.get("unk_drug_index")
-            self.unk_target_index = cached.get("unk_target_index")
+            self._load_cached_split()
         else:
-            logger.info(f"Cache not found for {split}. Fetching {name} via PyTDC...")
-
-            # Fetch data using PyTDC
-            dataset = DTI(name=name)
-
-            # Use PyTDC split mechanisms (handles Cold Start / S1-S4 equivalent)
-            split_kwargs = {"method": split_type, "frac": split_frac, "seed": seed}
-            if column_name is not None:
-                split_kwargs["column_name"] = column_name
-            split_dict = dataset.get_split(**split_kwargs)
-            raw_data = split_dict[split]
-            vocab = self._load_or_build_entity_vocab(split_dict)
-
-            logger.info(f"Processing and Caching {len(raw_data)} pairs...")
-            samples = self._build_sample_list(
-                raw_data,
-                drug_to_idx=vocab["drug_to_idx"],
-                target_to_idx=vocab["target_to_idx"],
-                unk_drug_index=vocab["unk_drug_index"],
-                unk_target_index=vocab["unk_target_index"],
+            self._build_and_cache_bundle(
+                split_method=split_method,
+                column_name=normalized_column_name,
+                split_frac=split_frac,
+                seed=seed,
             )
-            self.data = samples
-            self.unique_smiles = vocab["unique_smiles"]
-            self.unique_fasta = vocab["unique_fasta"]
-            self.unk_drug_index = vocab["unk_drug_index"]
-            self.unk_target_index = vocab["unk_target_index"]
-            self.num_unique_drugs = len(self.unique_smiles) + 1
-            self.num_unique_targets = len(self.unique_fasta) + 1
-
-            torch.save(
-                {
-                    "samples": samples,
-                    "unique_smiles": self.unique_smiles,
-                    "unique_fasta": self.unique_fasta,
-                    "num_unique_drugs": self.num_unique_drugs,
-                    "num_unique_targets": self.num_unique_targets,
-                    "unk_drug_index": self.unk_drug_index,
-                    "unk_target_index": self.unk_target_index,
-                },
-                self.cache_file,
-            )
-            logger.info(
-                f"Saved cache to {self.cache_file} "
-                f"({self.num_unique_drugs} unique drugs, {self.num_unique_targets} unique targets)"
-            )
+            self._load_cached_split()
 
     @staticmethod
-    def _infer_scenario_name(split_type: str, column_name: str | None) -> str:
+    def _infer_scenario_name(split_type: str, column_name: str | Sequence[str] | None) -> str:
         """Derive a stable scenario/cache tag from split config."""
-        if split_type == "random_split":
+        split_method = normalize_tdc_split_method(split_type)
+        normalized_column_name = normalize_tdc_column_name(column_name)
+        if split_method == "random":
             return "s1"
-        if split_type == "cold_split" and column_name == "Drug":
+        if split_method == "cold_split" and normalized_column_name == "Drug":
             return "s2"
-        if split_type == "cold_split" and column_name == "Target":
+        if split_method == "cold_split" and normalized_column_name == "Target":
             return "s3"
-        if split_type == "cold_split" and column_name is None:
+        if split_method == "cold_split" and normalized_column_name in (["Drug", "Target"], ["Target", "Drug"]):
             return "s4"
 
-        column_tag = "all" if column_name is None else str(column_name).lower()
-        return f"{split_type}_{column_tag}"
+        if normalized_column_name is None:
+            column_tag = "all"
+        elif isinstance(normalized_column_name, list):
+            column_tag = "_".join(str(item).lower() for item in normalized_column_name)
+        else:
+            column_tag = str(normalized_column_name).lower()
+        return f"{split_method}_{column_tag}"
 
     def _load_or_build_entity_vocab(self, split_dict) -> dict:
         """Use train split entities as the shared teacher namespace for all splits.
@@ -182,6 +175,105 @@ class TDCCachingDataset(Dataset):
         vocab["target_to_idx"] = {f: i for i, f in enumerate(unique_fasta)}
         return vocab
 
+    def _load_cached_split(self) -> None:
+        cached = torch.load(self.cache_file, weights_only=False)
+        self.data = cached["samples"]
+        self.num_unique_drugs = cached.get("num_unique_drugs")
+        self.num_unique_targets = cached.get("num_unique_targets")
+        self.unique_smiles = cached.get("unique_smiles")
+        self.unique_fasta = cached.get("unique_fasta")
+        self.split_unique_smiles = cached.get("split_unique_smiles")
+        self.split_unique_fasta = cached.get("split_unique_fasta")
+        self.unk_drug_index = cached.get("unk_drug_index")
+        self.unk_target_index = cached.get("unk_target_index")
+
+    def _build_and_cache_bundle(
+        self,
+        *,
+        split_method: str,
+        column_name: str | list[str] | None,
+        split_frac: list[float],
+        seed: int,
+    ) -> None:
+        """Build all split caches for a scenario in one pass.
+
+        This avoids repeated ``PyTDC.get_split()`` calls and keeps a manifest that
+        makes cache provenance explicit for benchmark runs.
+        """
+        logger.info(f"Cache not found for {self.split}. Fetching {self.name} via PyTDC...")
+        dataset = DTI(name=self.name)
+        split_kwargs: dict[str, Any] = {"method": split_method, "frac": split_frac, "seed": seed}
+        if column_name is not None:
+            split_kwargs["column_name"] = column_name
+        split_dict = dataset.get_split(**split_kwargs)
+        vocab = self._load_or_build_entity_vocab(split_dict)
+
+        from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
+
+        tokenizer = ESMSequenceTokenizer()
+        bundle_summaries: dict[str, dict[str, int]] = {}
+
+        for split_name, raw_data in split_dict.items():
+            split_cache_dir = os.path.join(self.cache_root, split_name)
+            os.makedirs(split_cache_dir, exist_ok=True)
+            split_cache_file = os.path.join(split_cache_dir, "dataset.pt")
+
+            if os.path.exists(split_cache_file):
+                continue
+
+            logger.info(f"Processing and caching scenario bundle split [{split_name}] with {len(raw_data)} pairs...")
+            samples = self._build_sample_list(
+                raw_data,
+                drug_to_idx=vocab["drug_to_idx"],
+                target_to_idx=vocab["target_to_idx"],
+                unk_drug_index=vocab["unk_drug_index"],
+                unk_target_index=vocab["unk_target_index"],
+                split_name=split_name,
+                tokenizer=tokenizer,
+            )
+            split_unique_smiles = list(dict.fromkeys(raw_data["Drug"].tolist()))
+            split_unique_fasta = list(dict.fromkeys(raw_data["Target"].tolist()))
+            num_unique_drugs = len(vocab["unique_smiles"]) + 1
+            num_unique_targets = len(vocab["unique_fasta"]) + 1
+
+            torch.save(
+                {
+                    "samples": samples,
+                    "unique_smiles": vocab["unique_smiles"],
+                    "unique_fasta": vocab["unique_fasta"],
+                    "split_unique_smiles": split_unique_smiles,
+                    "split_unique_fasta": split_unique_fasta,
+                    "num_unique_drugs": num_unique_drugs,
+                    "num_unique_targets": num_unique_targets,
+                    "unk_drug_index": vocab["unk_drug_index"],
+                    "unk_target_index": vocab["unk_target_index"],
+                },
+                split_cache_file,
+            )
+            bundle_summaries[split_name] = {
+                "pairs": int(len(raw_data)),
+                "samples": int(len(samples)),
+                "unique_drugs": int(len(split_unique_smiles)),
+                "unique_targets": int(len(split_unique_fasta)),
+            }
+
+        torch.save(
+            {
+                "dataset_name": self.name,
+                "scenario_name": self.scenario_name,
+                "split_method": split_method,
+                "column_name": column_name,
+                "frac": split_frac,
+                "seed": seed,
+                "binarize_labels": self.binarize_labels,
+                "affinity_threshold": self.affinity_threshold,
+                "num_unique_drugs": len(vocab["unique_smiles"]) + 1,
+                "num_unique_targets": len(vocab["unique_fasta"]) + 1,
+                "splits": bundle_summaries,
+            },
+            self.bundle_metadata_file,
+        )
+
     def _prepare_label(self, raw_label: float) -> float:
         """Normalize labels to binary when the upstream dataset exposes affinity values."""
         if raw_label in (0.0, 1.0):
@@ -191,7 +283,14 @@ class TDCCachingDataset(Dataset):
         return float(raw_label > self.affinity_threshold)
 
     def _build_sample_list(
-        self, df, drug_to_idx: dict, target_to_idx: dict, unk_drug_index: int, unk_target_index: int
+        self,
+        df,
+        drug_to_idx: dict,
+        target_to_idx: dict,
+        unk_drug_index: int,
+        unk_target_index: int,
+        split_name: str | None = None,
+        tokenizer=None,
     ):
         """Preprocess raw DataFrame rows into model-ready sample dicts.
 
@@ -207,12 +306,15 @@ class TDCCachingDataset(Dataset):
         from tqdm import tqdm
 
         from ugtsdti.data.transforms.chemistry import smiles_to_graph
-        from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
         samples = []
-        tokenizer = ESMSequenceTokenizer()
+        if tokenizer is None:
+            from ugtsdti.data.transforms.sequence import ESMSequenceTokenizer
 
-        for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Preprocessing [{self.split}]"):
+            tokenizer = ESMSequenceTokenizer()
+        active_split = split_name or self.split
+
+        for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Preprocessing [{active_split}]"):
             drug_smiles: str = row["Drug"]
             target_fasta: str = row["Target"]
             label = self._prepare_label(float(row["Y"]))

@@ -4,8 +4,6 @@ Getting Started
 Installation
 ------------
 
-Clone the repository and create the conda environment:
-
 .. code-block:: bash
 
     git clone https://github.com/mysorf-9239/UGTSDTI.git
@@ -14,62 +12,58 @@ Clone the repository and create the conda environment:
     conda activate ugtsdti
     pip install -e .
 
-**Stack:** Python 3.10 · PyTorch 2.1+ · PyTorch Geometric · Hydra-core · WandB · PyTDC ·
-RDKit · HuggingFace Transformers · Loguru
-
-Quick runs
+Quick Runs
 ----------
-
-All commands use `Hydra <https://hydra.cc/>`_ for config composition. Parameters can be
-overridden at the command line.
 
 .. code-block:: bash
 
-    # Student-only baseline
-    conda run -n ugtsdti python -m ugtsdti.main model=_.baseline._ data=tdc_davis
+    # Student-only baseline on S1
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model=hybrid teacher=none student=baseline fusion=none \
+        data=tdc_davis_s1 loss=bce
 
-    # Teacher-only baseline (GCN)
-    conda run -n ugtsdti python -m ugtsdti.main model=gcn._._ data=tdc_davis
+    # Teacher-only GCN on S2
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model=hybrid teacher=gcn student=none fusion=none \
+        data=tdc_davis_s2 loss=bce
 
-    # Hybrid: GCN teacher + baseline student + UG fusion (BCE loss)
-    conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis
+    # Hybrid GCN + baseline + UG + KD on S4
+    conda run -n ugtsdti python -m ugtsdti.main \
+        model=hybrid teacher=gcn student=baseline fusion=ug \
+        data=tdc_davis_s4 loss=kd loss.params.alpha=0.5
 
-    # Hybrid with Knowledge Distillation loss
-    conda run -n ugtsdti python -m ugtsdti.main model=gcn.baseline.ug data=tdc_davis \
-        trainer.loss.name=kd trainer.loss.alpha=0.5
+    # Benchmark matrix
+    conda run -n ugtsdti python -m ugtsdti.benchmark
 
-    # Smoke test all combos (WandB disabled)
+    # Smoke scripts
     WANDB_MODE=disabled bash scripts/smoke.sh
 
-Running tests
+Running Tests
 -------------
 
 .. code-block:: bash
 
     conda run -n ugtsdti python -m pytest tests/ -v
 
-All 155 tests should pass. The suite covers transforms, models, losses, metrics, registry,
-MC-Dropout consistency, and UG fusion.
+The test suite is split by intent:
 
-Project layout
---------------
+- ``tests/research/`` checks research invariants
+- ``tests/quality/`` checks code correctness and regressions
+
+Codebase Layout
+---------------
 
 .. code-block:: text
 
-    UGTSDTI/
-    ├── configs/                  # Hydra YAML configs
-    │   ├── default.yaml
-    │   ├── model/                # <teacher>.<student>.<fusion>.yaml
-    │   ├── data/                 # tdc_davis
-    │   └── trainer/              # default_trainer
-    ├── ugtsdti/
-    │   ├── main.py               # Entry point (@hydra.main)
-    │   ├── core/                 # FROZEN: Registry, Trainer, Metrics
-    │   ├── data/                 # TDCCachingDataset, transforms
-    │   ├── models/               # HybridDTIModel, student/, teacher/, fusion/
-    │   ├── losses/               # BCELoss (bce), KDLoss (kd)
-    │   └── utils/                # logger, seed
-    ├── examples/                 # Per-combo train.py (<teacher>.<student>.<fusion>.<loss>.<data>/)
-    ├── scripts/                  # Shell scripts (<teacher>.<student>.<fusion>.<loss>.<data>.sh)
-    ├── tests/                    # pytest suite (155 tests)
-    └── .agent/                   # AI context, task tracking, research notes
+    ugtsdti/
+    ├── experiment/        # experiment composition and runtime orchestration
+    ├── data/
+    │   ├── datasets/
+    │   ├── transforms/
+    │   ├── protocols/
+    │   └── graph_builder.py
+    ├── models/
+    ├── losses/
+    ├── core/
+    ├── main.py
+    └── benchmark.py

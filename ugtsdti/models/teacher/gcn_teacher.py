@@ -1,8 +1,9 @@
-"""
-GCN-based Teacher Model for UGTSDTI (Phase 11).
+"""GCN teacher implementation for graph-based transductive DTI modeling.
 
-Transductive encoder operating on global Drug-Drug and Protein-Protein
-similarity graphs. Node embeddings are looked up by sequential index.
+The teacher consumes global Drug-Drug and Protein-Protein similarity graphs and
+looks up entity embeddings through the train-derived namespace exposed by the
+dataset layer. Validation and test entities unseen during training fall back to
+learned UNK embeddings.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class GCNTeacher(nn.Module):
     ):
         super().__init__()
 
-        # Clamp dropout to ensure MC-Dropout uncertainty is meaningful
+        # Keep dropout high enough for meaningful MC-Dropout variance estimates.
         dropout = max(dropout, 0.2)
 
         self.drug_feat_dim = drug_feat_dim
@@ -51,14 +52,14 @@ class GCNTeacher(nn.Module):
         self.num_layers = num_layers
         self.dropout = dropout
 
-        # Drug GCN encoder
+        # Drug encoder over the global drug similarity graph.
         self.drug_convs = nn.ModuleList()
         in_dim = drug_feat_dim
         for _ in range(num_layers):
             self.drug_convs.append(GCNConv(in_dim, hidden_dim))
             in_dim = hidden_dim
 
-        # Protein GCN encoder
+        # Protein encoder over the global target similarity graph.
         self.protein_convs = nn.ModuleList()
         in_dim = protein_feat_dim
         for _ in range(num_layers):
@@ -70,7 +71,7 @@ class GCNTeacher(nn.Module):
         self.unknown_drug_emb = nn.Parameter(torch.zeros(hidden_dim))
         self.unknown_protein_emb = nn.Parameter(torch.zeros(hidden_dim))
 
-        # Predictor MLP
+        # Pairwise classifier on concatenated branch embeddings.
         self.predictor = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
@@ -78,7 +79,7 @@ class GCNTeacher(nn.Module):
             nn.Linear(hidden_dim, 1),
         )
 
-        # Graphs are set via set_graphs()
+        # Graphs are injected at runtime once scenario-aware caches are ready.
         self.dd_graph: Data | None = None
         self.pp_graph: Data | None = None
 

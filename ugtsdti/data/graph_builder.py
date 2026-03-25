@@ -1,8 +1,9 @@
-"""
-Graph Builder for Teacher GNN (Phase 11 UGTSDTI).
+"""Similarity-graph construction utilities for graph-based teacher models.
 
-Builds Drug-Drug (DD) and Protein-Protein (PP) similarity graphs
-from SMILES strings and FASTA sequences respectively.
+This module builds the transductive Drug-Drug and Protein-Protein graphs used by
+teacher encoders such as :class:`ugtsdti.models.teacher.gcn_teacher.GCNTeacher`.
+The builders are deterministic so scenario-aware caches can be reused safely
+across repeated runs.
 """
 
 from __future__ import annotations
@@ -17,10 +18,6 @@ from loguru import logger
 from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor
 from torch_geometric.data import Data
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _morgan_fingerprints(smiles_list: list[str], radius: int = 2, nbits: int = 2048) -> np.ndarray:
@@ -89,11 +86,6 @@ def _deduplicate_edges(src: list[int], dst: list[int]) -> tuple[list[int], list[
             new_src.append(i)
             new_dst.append(j)
     return new_src, new_dst
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def build_drug_drug_graph(

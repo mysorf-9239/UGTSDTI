@@ -1,0 +1,6 @@
+alias: "ug"
+name: "ug_fusion"
+params:
+  gate_hidden: 32
+  train_mc_samples: 2
+  eval_mc_samples: 5

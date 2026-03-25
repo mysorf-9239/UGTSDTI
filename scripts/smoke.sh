@@ -1,6 +1,5 @@
 #!/bin/bash
-# smoke.sh — Quick smoke test for all current model combos (2 epochs each).
-# Usage: bash scripts/smoke.sh
+# smoke.sh — Quick smoke test for the canonical slot-based experiment set.
 
 set -e
 cd "$(dirname "$0")/.." || exit 1
@@ -21,13 +20,24 @@ echo "=========================================="
 echo " UGTS-DTI Smoke Tests  (epochs=$EPOCHS)"
 echo "=========================================="
 
-run "_.baseline.bce._.davis"               model=_.baseline._           data=tdc_davis  trainer=default_trainer   trainer.loss.name=bce
-run "baseline._.bce._.davis"               model=baseline._._           data=tdc_davis  trainer=default_trainer   trainer.loss.name=bce
-run "gcn._.bce._.davis"                    model=gcn._._                data=tdc_davis  trainer=default_trainer   trainer.loss.name=bce
-run "baseline.baseline.bce.ug.davis"       model=baseline.baseline.ug   data=tdc_davis  trainer=default_trainer   trainer.loss.name=bce
-run "baseline.baseline.kd.ug.davis"        model=baseline.baseline.ug   data=tdc_davis  trainer=default_trainer   trainer.loss.name=kd    "+trainer.loss.alpha=0.5"
-run "gcn.baseline.bce.ug.davis"            model=gcn.baseline.ug        data=tdc_davis  trainer=default_trainer   trainer.loss.name=bce
-run "gcn.baseline.kd.ug.davis"             model=gcn.baseline.ug        data=tdc_davis  trainer=default_trainer   trainer.loss.name=kd    "+trainer.loss.alpha=0.5"
+run "student_baseline_bce_davis_s1" \
+    model=hybrid teacher=none student=baseline fusion=none \
+    data=tdc_davis_s1 trainer=default_trainer loss=bce
+run "teacher_baseline_bce_davis_s1" \
+    model=hybrid teacher=baseline student=none fusion=none \
+    data=tdc_davis_s1 trainer=default_trainer loss=bce
+run "teacher_gcn_bce_davis_s2" \
+    model=hybrid teacher=gcn student=none fusion=none \
+    data=tdc_davis_s2 trainer=default_trainer loss=bce
+run "hybrid_baseline_baseline_ug_bce_davis_s4" \
+    model=hybrid teacher=baseline student=baseline fusion=ug \
+    data=tdc_davis_s4 trainer=default_trainer loss=bce
+run "hybrid_gcn_baseline_ug_bce_davis_s4" \
+    model=hybrid teacher=gcn student=baseline fusion=ug \
+    data=tdc_davis_s4 trainer=default_trainer loss=bce
+run "hybrid_gcn_baseline_ug_kd_davis_s4" \
+    model=hybrid teacher=gcn student=baseline fusion=ug \
+    data=tdc_davis_s4 trainer=default_trainer loss=kd loss.params.alpha=0.5
 
 echo ""
 echo "=========================================="

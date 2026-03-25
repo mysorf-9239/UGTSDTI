@@ -88,3 +88,38 @@ def test_tdc_caching_and_batching(MockAutoTokenizer, tmp_path):
     batch = next(iter(loader))
 
     assert hasattr(batch["drug"], "batch")
+
+
+@pytest.mark.skipif(not HAS_PYG, reason="PyG/PyTDC not installed in this environment.")
+@patch("ugtsdti.data.transforms.sequence.AutoTokenizer")
+def test_tdc_bundle_cache_builds_all_splits_once(MockAutoTokenizer, tmp_path):
+    cache_dir = str(tmp_path / "data_cache_bundle")
+
+    mock_instance = MockAutoTokenizer.from_pretrained.return_value
+    mock_instance.return_value = {"input_ids": torch.randint(0, 33, (1, 64)), "attention_mask": torch.ones((1, 64))}
+
+    split_df = pd.DataFrame(
+        {
+            "Drug": ["CCO", "CCN"],
+            "Target": ["AAAA", "BBBB"],
+            "Y": [1.0, 0.0],
+        }
+    )
+
+    with patch("ugtsdti.data.datasets.tdc_dataset.DTI") as MockDTI:
+        instance = MockDTI.return_value
+        instance.get_split.return_value = {"train": split_df, "valid": split_df, "test": split_df}
+
+        train_dataset = TDCCachingDataset(
+            name="DAVIS", split="train", split_type="cold_split", cache_dir=cache_dir, seed=42, frac=[0.8, 0.1, 0.1]
+        )
+        valid_dataset = TDCCachingDataset(
+            name="DAVIS", split="valid", split_type="cold_split", cache_dir=cache_dir, seed=42, frac=[0.8, 0.1, 0.1]
+        )
+
+    assert len(train_dataset) == 2
+    assert len(valid_dataset) == 2
+    assert instance.get_split.call_count == 1
+    assert (tmp_path / "data_cache_bundle" / "DAVIS_s2_42" / "valid" / "dataset.pt").exists()
+    assert (tmp_path / "data_cache_bundle" / "DAVIS_s2_42" / "test" / "dataset.pt").exists()
+    assert (tmp_path / "data_cache_bundle" / "DAVIS_s2_42" / "bundle_metadata.pt").exists()

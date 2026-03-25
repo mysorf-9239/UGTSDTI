@@ -12,13 +12,13 @@ from ugtsdti.core.metrics import compute_dti_metrics
 
 
 def batch_to_device(batch, device):
-    """Recursively move tensors and dictionaries to the specified device."""
+    """Recursively move a batch payload to the target device."""
     if isinstance(batch, torch.Tensor):
         return batch.to(device)
     elif isinstance(batch, dict):
         return {k: batch_to_device(v, device) for k, v in batch.items()}
     elif hasattr(batch, "to"):
-        # For PyG Data/Batch objects
+        # Covers PyG Data and Batch objects.
         return batch.to(device)
     elif isinstance(batch, list):
         return [batch_to_device(v, device) for v in batch]
@@ -26,9 +26,11 @@ def batch_to_device(batch, device):
 
 
 class Trainer:
-    """
-    A professional, boilerplate-free training loop for UGTSDTI.
-    Handles epochs, early stopping, checkpoint saving, and metric logging.
+    """Training and evaluation loop for UGTSDTI experiments.
+
+    Beyond standard fit/evaluate behavior, the trainer records branch-wise
+    metrics and uncertainty diagnostics so hybrid runs remain analyzable across
+    cold-start scenarios.
     """
 
     def __init__(
@@ -64,7 +66,34 @@ class Trainer:
         self.no_improve_epochs = 0
         self.current_epoch = 0
 
+    @staticmethod
+    def _summarize_array(values: list[np.ndarray], prefix: str) -> dict[str, float]:
+        """Return summary statistics for a list of per-batch arrays."""
+        if not values:
+            return {}
+        merged = np.concatenate(values).astype(np.float64)
+        return {
+            f"{prefix}_mean": float(merged.mean()),
+            f"{prefix}_std": float(merged.std()),
+            f"{prefix}_p50": float(np.percentile(merged, 50)),
+            f"{prefix}_p90": float(np.percentile(merged, 90)),
+        }
+
+    @staticmethod
+    def _compute_branch_metrics(
+        y_true: np.ndarray,
+        logits_list: list[np.ndarray],
+        branch_name: str,
+    ) -> dict[str, float]:
+        """Compute metrics for an auxiliary branch when logits are available."""
+        if not logits_list:
+            return {}
+        branch_logits = np.concatenate(logits_list)
+        branch_metrics = compute_dti_metrics(y_true, y_score=branch_logits)
+        return {f"{branch_name}_{key}": value for key, value in branch_metrics.items()}
+
     def fit(self, train_loader, val_loader=None):
+        """Train for at most ``epochs`` and return the best validation AUROC."""
         logger.info(f"Starting training for {self.epochs} epochs.")
 
         for epoch in range(1, self.epochs + 1):
@@ -90,6 +119,7 @@ class Trainer:
         return self.best_metric
 
     def _train_epoch(self, loader) -> Dict[str, float]:
+        """Run one optimization epoch and return aggregate training metrics."""
         self.model.train()
         total_loss = 0.0
 
@@ -119,10 +149,22 @@ class Trainer:
 
     @torch.no_grad()
     def evaluate(self, loader, prefix="val") -> Dict[str, float]:
+        """Evaluate one split and return prefixed scalar metrics.
+
+        Besides fused metrics, the method emits branch-wise scores, uncertainty
+        summaries, and UNK coverage rates when the model/dataset expose them.
+        """
         self.model.eval()
         all_preds = []
         all_trues = []
         total_loss = 0.0
+        gate_alphas = []
+        student_vars = []
+        teacher_vars = []
+        student_logits = []
+        teacher_logits = []
+        drug_indices = []
+        target_indices = []
 
         pbar = tqdm(loader, desc=f"Epoch {self.current_epoch} [{prefix.capitalize()}]")
         for batch in pbar:
@@ -135,15 +177,43 @@ class Trainer:
             total_loss += loss.item() * y_true.size(0)
             all_preds.append(model_output["logits"].detach().cpu().numpy())
             all_trues.append(y_true.cpu().numpy())
+            if model_output.get("gate_alpha") is not None:
+                gate_alphas.append(model_output["gate_alpha"].detach().cpu().numpy())
+            if model_output.get("student_var") is not None:
+                student_vars.append(model_output["student_var"].detach().cpu().numpy())
+            if model_output.get("teacher_var") is not None:
+                teacher_vars.append(model_output["teacher_var"].detach().cpu().numpy())
+            if model_output.get("student_logits") is not None:
+                student_logits.append(model_output["student_logits"].detach().cpu().numpy())
+            if model_output.get("teacher_logits") is not None:
+                teacher_logits.append(model_output["teacher_logits"].detach().cpu().numpy())
+            if "drug_index" in batch:
+                drug_indices.append(batch["drug_index"].detach().cpu().numpy().reshape(-1))
+            if "target_index" in batch:
+                target_indices.append(batch["target_index"].detach().cpu().numpy().reshape(-1))
 
         y_score_full = np.concatenate(all_preds)
         y_true_full = np.concatenate(all_trues)
 
-        # Calculate DTI metrics
+        # Compute fused and auxiliary research metrics.
         metrics = compute_dti_metrics(y_true_full, y_score=y_score_full)
         metrics["loss"] = total_loss / len(loader.dataset)
+        metrics.update(self._summarize_array(gate_alphas, "gate_alpha"))
+        metrics.update(self._summarize_array(student_vars, "student_var"))
+        metrics.update(self._summarize_array(teacher_vars, "teacher_var"))
+        metrics.update(self._compute_branch_metrics(y_true_full, student_logits, "student"))
+        metrics.update(self._compute_branch_metrics(y_true_full, teacher_logits, "teacher"))
 
-        # Format keys for logging
+        unk_drug_index = getattr(loader.dataset, "unk_drug_index", None)
+        unk_target_index = getattr(loader.dataset, "unk_target_index", None)
+        if drug_indices and unk_drug_index is not None:
+            merged_drug_indices = np.concatenate(drug_indices)
+            metrics["unk_drug_rate"] = float((merged_drug_indices == unk_drug_index).mean())
+        if target_indices and unk_target_index is not None:
+            merged_target_indices = np.concatenate(target_indices)
+            metrics["unk_target_rate"] = float((merged_target_indices == unk_target_index).mean())
+
+        # Prefix keys so callers can safely merge multiple split payloads.
         result = {f"{prefix}/{k}": v for k, v in metrics.items()}
 
         log_str = " | ".join([f"{k}: {v:.4f}" for k, v in result.items()])
@@ -151,8 +221,7 @@ class Trainer:
         return result
 
     def _check_early_stopping(self, val_metrics: Dict[str, float]):
-        # Target metric is usually Validation MSE (lower is better) or AUROC (higher is better).
-        # We assume AUROC for now.
+        """Track the best validation AUROC and update early-stopping state."""
         target_metric = val_metrics.get("val/auroc", 0.0)
 
         if target_metric > self.best_metric:
@@ -164,6 +233,7 @@ class Trainer:
             self.no_improve_epochs += 1
 
     def _save_checkpoint(self):
+        """Persist the current model weights as the best-known checkpoint."""
         torch.save(self.model.state_dict(), self.best_model_path)
 
     def load_best_checkpoint(self) -> bool:
@@ -178,6 +248,7 @@ class Trainer:
         return True
 
     def _log_metrics(self, train_metrics, val_metrics):
+        """Forward metrics to WandB when a run is active."""
         if self.run is not None:
             log_dict = {**train_metrics, **val_metrics, "epoch": self.current_epoch}
             if self.scheduler is not None:

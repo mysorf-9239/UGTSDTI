@@ -1,10 +1,7 @@
-"""
-Tests for Teacher GNN (Phase 11 UGTSDTI).
+"""Quality tests for graph-based teacher models and graph-building utilities.
 
-Covers:
-- Unit tests: GCNTeacher registration, forward shape, error handling,
-  graph builder edge cases, EMA, cache.
-- Property-based tests (P1–P9) using hypothesis.
+Coverage includes registry integration, forward passes, graph-builder edge
+cases, cache behavior, EMA helpers, and property-based robustness checks.
 """
 
 from __future__ import annotations

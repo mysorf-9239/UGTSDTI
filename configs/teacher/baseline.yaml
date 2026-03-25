@@ -1,0 +1,6 @@
+alias: "baseline"
+name: "baseline_teacher"
+params:
+  hidden_dim: 128
+  num_drugs: 1000
+  num_targets: 1000

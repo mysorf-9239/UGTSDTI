@@ -1,52 +1,43 @@
 # scripts/
 
-Shell scripts để chạy training. Mỗi script tương ứng 1-1 với một thư mục trong `examples/`.
+Shell scripts cho các ablation canonical, dùng naming mô tả theo slot và scenario.
 
-## Naming Convention
+## Nguyên tắc
 
-```
-<teacher>.<student>.<fusion>.<loss>.<data>.sh
-```
-
-Cùng convention với `examples/` — đọc tên script là biết ngay đang chạy combo nào.
-
-> `_` = slot không dùng | `smoke.sh` = special script chạy tất cả combo nhanh
+- Không encode kiến trúc vào chuỗi compound khó đọc
+- Tên script nên cho biết rõ:
+  - branch nào đang bật
+  - loss nào dùng
+  - dataset/scenario nào chạy
+- Command bên trong script phải dùng slot-based CLI:
+  - `model=hybrid`
+  - `teacher=...`
+  - `student=...`
+  - `fusion=...`
+  - `loss=...`
+  - `data=...`
 
 ## Danh sách hiện tại
 
-| Script | Model config | Loss | Mô tả |
-|--------|-------------|------|-------|
-| `smoke.sh` | tất cả | — | Smoke test 2 epochs, `WANDB_MODE=disabled` |
-| `_.baseline.bce._.davis.sh` | `_.baseline._` | `bce` | Only student baseline |
-| `baseline._.bce._.davis.sh` | `baseline._._` | `bce` | Only teacher dummy |
-| `gcn._.bce._.davis.sh` | `gcn._._` | `bce` | Only teacher GCN |
-| `baseline.baseline.bce.ug.davis.sh` | `baseline.baseline.ug` | `bce` | Hybrid baseline + UG + BCE |
-| `baseline.baseline.kd.ug.davis.sh` | `baseline.baseline.ug` | `kd` | Hybrid baseline + UG + KD |
-| `gcn.baseline.bce.ug.davis.sh` | `gcn.baseline.ug` | `bce` | Hybrid GCN + UG + BCE |
-| `gcn.baseline.kd.ug.davis.sh` | `gcn.baseline.ug` | `kd` | Hybrid GCN + UG + KD |
+| Script | Scenario | Mô tả |
+|--------|----------|-------|
+| `student_baseline_bce_davis_s1.sh` | `S1` | Student-only baseline |
+| `teacher_baseline_bce_davis_s1.sh` | `S1` | Teacher-only baseline embedding |
+| `teacher_gcn_bce_davis_s2.sh` | `S2` | Teacher-only GCN |
+| `hybrid_baseline_baseline_ug_bce_davis_s4.sh` | `S4` | Hybrid baseline teacher + baseline student + UG |
+| `hybrid_gcn_baseline_ug_bce_davis_s4.sh` | `S4` | Hybrid GCN teacher + baseline student + UG |
+| `hybrid_gcn_baseline_ug_kd_davis_s4.sh` | `S4` | Hybrid GCN teacher + baseline student + UG + KD |
+| `smoke.sh` | mixed | Smoke test tập canonical configs |
 
 ## Cách chạy
 
 ```bash
-# Chạy một script cụ thể
-bash scripts/gcn.baseline.kd.ug.davis.sh
-
-# Override epochs
-EPOCHS=50 bash scripts/gcn.baseline.kd.ug.davis.sh
-
-# Smoke test tất cả (2 epochs mỗi combo)
+bash scripts/hybrid_gcn_baseline_ug_kd_davis_s4.sh
+EPOCHS=20 bash scripts/hybrid_gcn_baseline_ug_kd_davis_s4.sh
 WANDB_MODE=disabled bash scripts/smoke.sh
 ```
 
-## Thêm script mới
-
-1. Copy script gần nhất
-2. Đổi tên theo convention: `<teacher>.<student>.<fusion>.<loss>.<data>.sh`
-3. Sửa `model=`, `trainer.loss.name=`, `run_name=`
-4. Tạo `examples/<same_name>/train.py` tương ứng
-
 ## Ghi chú
 
-- Hiện tại chạy local. Để chạy trên HPC/Kaggle, thêm SLURM header hoặc Kaggle notebook wrapper sau.
-- `EPOCHS` env var override số epochs (default 100).
-- `WANDB_MODE=disabled` để tắt WandB logging khi test nhanh.
+1. Tất cả script giả định Conda env là `ugtsdti`.
+2. Muốn tạo script mới, sửa các slot Hydra thay vì tạo alias config riêng cho từng tổ hợp.

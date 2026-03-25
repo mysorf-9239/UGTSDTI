@@ -24,7 +24,15 @@ def _make_hybrid(mc_samples: int = 5) -> HybridDTIModel:
     return HybridDTIModel(
         student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}},
         teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}},
-        fusion_cfg={"name": "ug_fusion", "params": {"gate_hidden": 8, "mc_samples": mc_samples}},
+        fusion_cfg={
+            "name": "ug_fusion",
+            "params": {
+                "gate_hidden": 8,
+                "mc_samples": mc_samples,
+                "train_mc_samples": mc_samples,
+                "eval_mc_samples": mc_samples,
+            },
+        },
     )
 
 
@@ -148,6 +156,34 @@ def test_teacher_branch_called_mc_plus_one_times_in_training_mode():
     assert call_count == 6
 
 
+def test_train_and_eval_mc_samples_can_differ():
+    model = HybridDTIModel(
+        student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}},
+        teacher_cfg={"name": "baseline_teacher", "params": {"hidden_dim": 32, "num_drugs": 1000, "num_targets": 1000}},
+        fusion_cfg={"name": "ug_fusion", "params": {"gate_hidden": 8, "train_mc_samples": 2, "eval_mc_samples": 5}},
+    )
+    batch = _make_batch(B=2)
+
+    student_calls = 0
+    original_student = model.student.forward
+
+    def counting_student(b):
+        nonlocal student_calls
+        student_calls += 1
+        return original_student(b)
+
+    model.train()
+    with patch.object(model.student, "forward", side_effect=counting_student):
+        model(batch)
+    assert student_calls == 3
+
+    student_calls = 0
+    model.eval()
+    with patch.object(model.student, "forward", side_effect=counting_student):
+        model(batch)
+    assert student_calls == 5
+
+
 @pytest.mark.parametrize("B", [1, 2, 4, 8])
 def test_only_student_output_shape_and_key(B):
     model = HybridDTIModel(student_cfg={"name": "baseline_student", "params": {"hidden_dim": 32}})
@@ -155,8 +191,10 @@ def test_only_student_output_shape_and_key(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
+    assert out["student_logits"].shape == (B,)
+    assert out["teacher_logits"] is None
 
 
 @pytest.mark.parametrize("B", [1, 2, 4, 8])
@@ -168,8 +206,10 @@ def test_only_teacher_output_shape_and_key(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
+    assert out["teacher_logits"].shape == (B,)
+    assert out["student_logits"] is None
 
 
 def test_mc_samples_zero_uses_equal_weight_fusion():
@@ -200,11 +240,13 @@ def test_hybrid_output_dict_keys_eval_mode(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
     assert out["student_logits"].shape == (B,)
     assert out["teacher_logits"].shape == (B,)
     assert out["gate_alpha"].shape == (B,)
+    assert out["student_var"].shape == (B,)
+    assert out["teacher_var"].shape == (B,)
 
 
 @pytest.mark.parametrize("B", [1, 2, 4])
@@ -214,9 +256,11 @@ def test_hybrid_output_dict_keys_training_mode(B):
     batch = _make_batch(B=B)
     out = model(batch)
 
-    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha"}
+    assert set(out.keys()) == {"logits", "student_logits", "teacher_logits", "gate_alpha", "student_var", "teacher_var"}
     assert out["logits"].shape == (B,)
     assert out["gate_alpha"].shape == (B,)
+    assert out["student_var"].shape == (B,)
+    assert out["teacher_var"].shape == (B,)
 
 
 def test_no_model_raises():

@@ -1,8 +1,12 @@
 # Default Main Entry Configuration
 defaults:
   - _self_
-  - model: baseline.baseline.ug
-  - data: tdc_davis
+  - model: hybrid
+  - teacher: baseline
+  - student: baseline
+  - fusion: ug
+  - loss: bce
+  - data: tdc_davis_s4
   - trainer: default_trainer
 
 run_name: "ugtsdti_baseline"

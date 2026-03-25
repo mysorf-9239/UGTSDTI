@@ -1,0 +1,4 @@
+alias: "baseline"
+name: "baseline_student"
+params:
+  hidden_dim: 128
