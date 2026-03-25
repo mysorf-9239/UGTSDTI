@@ -13,4 +13,4 @@ conda run -n ugtsdti python -m ugtsdti.main \
     trainer.params.epochs="$EPOCHS" \
     loss=kd \
     loss.params.alpha=0.5 \
-    run_name="hybrid_gcn_baseline_ug_kd_davis_s4"
+    run_name="gcn.baseline.ug.kd.davis_s4"

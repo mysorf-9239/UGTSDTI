@@ -20,22 +20,27 @@ echo "=========================================="
 echo " UGTS-DTI Smoke Tests  (epochs=$EPOCHS)"
 echo "=========================================="
 
-run "student_baseline_bce_davis_s1" \
+run "_.baseline.bce._.davis_s1" \
     model=hybrid teacher=none student=baseline fusion=none \
     data=tdc_davis_s1 trainer=default_trainer loss=bce
-run "teacher_baseline_bce_davis_s1" \
+
+run "baseline._.bce._.davis_s1" \
     model=hybrid teacher=baseline student=none fusion=none \
     data=tdc_davis_s1 trainer=default_trainer loss=bce
-run "teacher_gcn_bce_davis_s2" \
+
+run "gcn._.bce._.davis_s2" \
     model=hybrid teacher=gcn student=none fusion=none \
     data=tdc_davis_s2 trainer=default_trainer loss=bce
-run "hybrid_baseline_baseline_ug_bce_davis_s4" \
+
+run "baseline.baseline.ug.bce.davis_s4" \
     model=hybrid teacher=baseline student=baseline fusion=ug \
     data=tdc_davis_s4 trainer=default_trainer loss=bce
-run "hybrid_gcn_baseline_ug_bce_davis_s4" \
+
+run "gcn.baseline.ug.bce.davis_s4" \
     model=hybrid teacher=gcn student=baseline fusion=ug \
     data=tdc_davis_s4 trainer=default_trainer loss=bce
-run "hybrid_gcn_baseline_ug_kd_davis_s4" \
+
+run "gcn.baseline.ug.kd.davis_s4" \
     model=hybrid teacher=gcn student=baseline fusion=ug \
     data=tdc_davis_s4 trainer=default_trainer loss=kd loss.params.alpha=0.5
 

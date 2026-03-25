@@ -1,15 +1,15 @@
 """
-Only Teacher — GCN encoder, BCE loss, DAVIS dataset.
+Hybrid — GCN teacher + baseline student, UG fusion, BCE loss, DAVIS dataset.
 
 Slot convention: <teacher>.<student>.<fusion>.<loss>.<data>
   teacher : gcn
-  student : _ (none)
-  fusion  : _ (none)
+  student : baseline
+  fusion  : ug
   loss    : bce
   data    : davis
 
 Usage:
-    conda run -n ugtsdti python -m examples.gcn._.bce._.davis.train
+    conda run -n ugtsdti python -m examples.gcn.baseline.ug.bce.davis.train
 """
 
 import subprocess
@@ -21,10 +21,10 @@ CMD = [
     "ugtsdti.main",
     "model=hybrid",
     "teacher=gcn",
-    "student=none",
-    "fusion=none",
+    "student=baseline",
+    "fusion=ug",
     "loss=bce",
-    "data=tdc_davis_s2",
+    "data=tdc_davis_s4",
 ]
 
 if __name__ == "__main__":

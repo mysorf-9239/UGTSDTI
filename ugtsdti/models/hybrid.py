@@ -55,8 +55,7 @@ class HybridDTIModel(nn.Module):
             mc_samples: Number of stochastic forward passes.
 
         Returns:
-            Tuple of ``(mean_logit, epistemic_var)`` where ``mean_logit`` has shape
-            ``(B, 1)`` and ``epistemic_var`` has shape ``(B,)``.
+            Tuple of ``(mean_logit, epistemic_var)`` both of shape ``(B,)``.
         """
         training_mode = branch.training
         branch.train()  # activate dropout

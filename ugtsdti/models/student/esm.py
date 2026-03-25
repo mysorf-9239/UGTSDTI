@@ -65,6 +65,6 @@ class ESMProteinStudent(nn.Module):
         cls_emb = outputs.last_hidden_state[:, 0, :]  # [B, esm_hidden_size]
 
         protein_emb = self.projection(cls_emb)  # [B, hidden_dim]
-        logits = self.predictor(protein_emb)  # [B, 1]
+        logits = self.predictor(protein_emb).squeeze(-1)  # [B]
 
         return {"logits": logits}

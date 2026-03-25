@@ -1,5 +1,5 @@
 #!/bin/bash
-# Teacher-only GCN model on DAVIS S2.
+# Student-only baseline on DAVIS S1.
 
 set -e
 cd "$(dirname "$0")/.." || exit 1
@@ -7,9 +7,9 @@ cd "$(dirname "$0")/.." || exit 1
 EPOCHS="${EPOCHS:-100}"
 
 conda run -n ugtsdti python -m ugtsdti.main \
-    model=hybrid teacher=gcn student=none fusion=none \
-    data=tdc_davis_s2 \
+    model=hybrid teacher=none student=baseline fusion=none \
+    data=tdc_davis_s1 \
     trainer=default_trainer \
     trainer.params.epochs="$EPOCHS" \
     loss=bce \
-    run_name="teacher_gcn_bce_davis_s2"
+    run_name="_.baseline.bce._.davis_s1"

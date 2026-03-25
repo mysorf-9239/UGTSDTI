@@ -1,5 +1,5 @@
 """
-Hybrid — baseline teacher + baseline student, BCE loss, UG Fusion, DAVIS.
+Hybrid — baseline teacher + baseline student, UG fusion, BCE loss, DAVIS dataset.
 
 Slot convention: <teacher>.<student>.<fusion>.<loss>.<data>
   teacher : baseline
@@ -9,7 +9,7 @@ Slot convention: <teacher>.<student>.<fusion>.<loss>.<data>
   data    : davis
 
 Usage:
-    conda run -n ugtsdti python -m examples.baseline.baseline.bce.ug.davis.train
+    conda run -n ugtsdti python -m examples.baseline.baseline.ug.bce.davis.train
 """
 
 import subprocess
@@ -19,10 +19,12 @@ CMD = [
     "python",
     "-m",
     "ugtsdti.main",
-    "model=baseline.baseline.ug",
-    "data=tdc_davis",
-    "trainer=default_trainer",
-    "trainer.loss.name=bce",
+    "model=hybrid",
+    "teacher=baseline",
+    "student=baseline",
+    "fusion=ug",
+    "loss=bce",
+    "data=tdc_davis_s4",
 ]
 
 if __name__ == "__main__":

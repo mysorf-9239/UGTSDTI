@@ -30,22 +30,22 @@ Mỗi thư mục là một experiment configuration hoàn chỉnh, chứa `train
 
 ```
 _.baseline.bce._.davis/              # only student (baseline)
+_.esm.bce._.davis/                   # only student (ESM)
 baseline._.bce._.davis/              # only teacher (dummy embedding)
 gcn._.bce._.davis/                   # only teacher (GCN)
-_.esm.bce._.davis/                   # only student (ESM)
-baseline.baseline.bce.ug.davis/      # hybrid baseline + UG + BCE
-baseline.baseline.kd.ug.davis/       # hybrid baseline + UG + KD
-gcn.baseline.bce.ug.davis/           # hybrid GCN + UG + BCE
-gcn.baseline.kd.ug.davis/            # hybrid GCN + UG + KD  ← main experiment
+baseline.baseline.ug.bce.davis/      # hybrid baseline + UG + BCE
+baseline.baseline.ug.kd.davis/       # hybrid baseline + UG + KD
+gcn.baseline.ug.bce.davis/           # hybrid GCN + UG + BCE
+gcn.baseline.ug.kd.davis/            # hybrid GCN + UG + KD  ← main experiment
 ```
 
 ## Cách chạy
 
 ```bash
-conda run -n ugtsdti python -m examples.gcn.baseline.kd.ug.davis.train
+conda run -n ugtsdti python -m examples.gcn.baseline.ug.kd.davis.train
 
 # Override epochs
-EPOCHS=50 conda run -n ugtsdti python -m examples.gcn.baseline.kd.ug.davis.train
+EPOCHS=50 conda run -n ugtsdti python -m examples.gcn.baseline.ug.kd.davis.train
 ```
 
 ## Thêm experiment mới

@@ -30,11 +30,10 @@ class KDLoss(nn.Module):
         logits = model_outputs["logits"].view(-1)
         task = self.task_loss(logits, y_true.view(-1))
 
-        if "student_logits" in model_outputs and "teacher_logits" in model_outputs:
-            distill = self.distill_loss(
-                model_outputs["student_logits"].view(-1),
-                model_outputs["teacher_logits"].view(-1),
-            )
+        s_logits = model_outputs.get("student_logits")
+        t_logits = model_outputs.get("teacher_logits")
+        if s_logits is not None and t_logits is not None:
+            distill = self.distill_loss(s_logits.view(-1), t_logits.view(-1))
             return (1.0 - self.alpha) * task + self.alpha * distill
 
         return task

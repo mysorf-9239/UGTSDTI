@@ -1,11 +1,11 @@
 """
-Only Student — ESM-2 protein encoder, BCE loss, no gate, DAVIS dataset.
+Only Student — ESM-2 protein encoder, BCE loss, DAVIS dataset.
 
-Slot convention: <teacher>.<student>.<loss>.<gate>.<data>
+Slot convention: <teacher>.<student>.<fusion>.<loss>.<data>
   teacher : _ (none)
   student : esm
+  fusion  : _ (none)
   loss    : bce
-  gate    : _ (none)
   data    : davis
 
 Usage:
@@ -19,10 +19,12 @@ CMD = [
     "python",
     "-m",
     "ugtsdti.main",
-    "model=_.esm._",
-    "data=tdc_davis",
-    "trainer=default_trainer",
-    "trainer.loss.name=bce",
+    "model=hybrid",
+    "teacher=none",
+    "student=esm",
+    "fusion=none",
+    "loss=bce",
+    "data=tdc_davis_s4",
 ]
 
 if __name__ == "__main__":

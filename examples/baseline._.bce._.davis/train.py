@@ -1,11 +1,11 @@
 """
-Only Teacher — baseline embedding (dummy), BCE loss, no gate, DAVIS dataset.
+Only Teacher — baseline embedding, BCE loss, DAVIS dataset.
 
-Slot convention: <teacher>.<student>.<loss>.<gate>.<data>
+Slot convention: <teacher>.<student>.<fusion>.<loss>.<data>
   teacher : baseline
   student : _ (none)
+  fusion  : _ (none)
   loss    : bce
-  gate    : _ (none)
   data    : davis
 
 Usage:
@@ -19,10 +19,12 @@ CMD = [
     "python",
     "-m",
     "ugtsdti.main",
-    "model=baseline._._",
-    "data=tdc_davis",
-    "trainer=default_trainer",
-    "trainer.loss.name=bce",
+    "model=hybrid",
+    "teacher=baseline",
+    "student=none",
+    "fusion=none",
+    "loss=bce",
+    "data=tdc_davis_s1",
 ]
 
 if __name__ == "__main__":

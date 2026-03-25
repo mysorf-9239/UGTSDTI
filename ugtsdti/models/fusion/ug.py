@@ -77,8 +77,8 @@ class UncertaintyGatedFusion(nn.Module):
         """Fuse Student and Teacher predictions via uncertainty-gated blending.
 
         Args:
-            student_logits: Shape ``(B,)`` or ``(B, 1)``.
-            teacher_logits: Shape ``(B,)`` or ``(B, 1)``.
+            student_logits: Shape ``(B,)``.
+            teacher_logits: Shape ``(B,)``.
             student_var: MC-Dropout epistemic variance of Student. Shape ``(B,)``.
             teacher_var: MC-Dropout epistemic variance of Teacher. Shape ``(B,)``.
 

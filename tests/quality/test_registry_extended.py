@@ -96,7 +96,7 @@ def test_models_registry_has_expected_keys():
     # Trigger imports so decorators run
     import ugtsdti.models  # noqa: F401
 
-    expected = {"hybrid_dti", "baseline_student", "baseline_teacher", "ug_fusion"}
+    expected = {"hybrid_dti", "baseline_student", "baseline_teacher", "ug_fusion", "gcn_teacher", "esm_student"}
     for key in expected:
         assert key in MODELS, f"'{key}' not found in MODELS registry"
 

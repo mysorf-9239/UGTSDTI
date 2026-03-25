@@ -12,4 +12,4 @@ conda run -n ugtsdti python -m ugtsdti.main \
     trainer=default_trainer \
     trainer.params.epochs="$EPOCHS" \
     loss=bce \
-    run_name="hybrid_gcn_baseline_ug_bce_davis_s4"
+    run_name="gcn.baseline.ug.bce.davis_s4"

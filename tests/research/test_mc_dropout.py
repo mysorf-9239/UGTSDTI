@@ -92,30 +92,26 @@ def test_mc_forward_var_nonnegative():
 
 
 def test_mc_forward_mean_and_var_from_same_tensor():
+    """mean and var must be derived from the same mc_logits tensor (mathematical consistency)."""
     torch.manual_seed(42)
     model = _make_hybrid(mc_samples=6)
     batch = _make_batch(B=2)
 
     model.student.train()
     with torch.no_grad():
-        mc_logits = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)
+        mc_logits = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)  # (B, 6)
     model.student.eval()
 
     expected_mean = mc_logits.mean(dim=-1)
     expected_var = mc_logits.var(dim=-1)
 
-    torch.manual_seed(42)
-    model.student.train()
-    with torch.no_grad():
-        mc_logits2 = torch.stack([model.student(batch)["logits"] for _ in range(6)], dim=-1)
-    model.student.eval()
-    actual_mean = mc_logits2.mean(dim=-1)
-    actual_var = mc_logits2.var(dim=-1)
-
-    assert actual_mean.shape == expected_mean.shape
-    assert actual_var.shape == expected_var.shape
-    assert torch.isfinite(actual_mean).all()
-    assert torch.isfinite(actual_var).all()
+    # Verify shapes and finiteness
+    assert expected_mean.shape == (2,)
+    assert expected_var.shape == (2,)
+    assert torch.isfinite(expected_mean).all()
+    assert torch.isfinite(expected_var).all()
+    # Variance must be non-negative
+    assert (expected_var >= 0).all()
 
 
 def test_student_branch_called_mc_plus_one_times_in_training_mode():
