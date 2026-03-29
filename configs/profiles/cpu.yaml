@@ -1,0 +1,12 @@
+extends:
+  - ../base_full.yaml
+experiment:
+  name: ugtsdti-cpu
+runtime:
+  device: cpu
+  seed: 7
+  deterministic: true
+  precision: fp32
+  num_workers: 0
+  artifacts_dir: artifacts/cpu
+  checkpoint_dir: artifacts/cpu/checkpoints

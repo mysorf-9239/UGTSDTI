@@ -1,0 +1,15 @@
+extends:
+  - ../base_full.yaml
+experiment:
+  name: ugtsdti-kaggle
+logging:
+  backend: file
+runtime:
+  device: cuda
+  seed: 7
+  deterministic: false
+  precision: mixed
+  num_workers: 2
+  artifacts_dir: /kaggle/working/artifacts
+  checkpoint_dir: /kaggle/working/artifacts/checkpoints
+  data_dir: /kaggle/input

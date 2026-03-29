@@ -1,0 +1,16 @@
+extends:
+  - ../base_full.yaml
+experiment:
+  name: ugtsdti-local
+logging:
+  backend: file
+  trace_execution: true
+  inspect_state: true
+runtime:
+  device: cpu
+  seed: 7
+  deterministic: true
+  precision: fp32
+  num_workers: 0
+  artifacts_dir: artifacts/local
+  checkpoint_dir: artifacts/local/checkpoints

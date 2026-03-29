@@ -1,0 +1,15 @@
+extends:
+  - ../base_full.yaml
+experiment:
+  name: ugtsdti-gpu
+logging:
+  backend: file
+runtime:
+  device: cuda
+  seed: 7
+  deterministic: false
+  precision: mixed
+  num_workers: 4
+  pin_memory: true
+  artifacts_dir: artifacts/gpu
+  checkpoint_dir: artifacts/gpu/checkpoints

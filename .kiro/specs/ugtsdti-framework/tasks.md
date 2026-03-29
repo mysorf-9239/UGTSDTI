@@ -358,7 +358,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - `CompositeLogger` fan-out nhiều backends trong `composite.py`
     - Pipeline core MUST NOT import `wandb` trực tiếp
     - _Requirements: REQ-OPS-001_
-  - [ ]* 16.7 Cung cấp environment specs hoặc runtime profiles cho local/dev/cpu/gpu/kaggle
+  - [x]* 16.7 Cung cấp environment specs hoặc runtime profiles cho local/dev/cpu/gpu/kaggle
     - Có thể là config templates, docs, hoặc launcher presets tương đương
     - _Requirements: REQ-OPS-003_
 

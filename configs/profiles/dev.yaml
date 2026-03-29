@@ -1,0 +1,16 @@
+extends:
+  - ../ablations/student_only.yaml
+experiment:
+  name: ugtsdti-dev
+logging:
+  backend: file
+  trace_execution: true
+  inspect_state: true
+runtime:
+  device: cpu
+  seed: 13
+  deterministic: true
+  precision: fp32
+  num_workers: 0
+  artifacts_dir: artifacts/dev
+  checkpoint_dir: artifacts/dev/checkpoints

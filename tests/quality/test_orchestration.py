@@ -228,6 +228,11 @@ def test_sample_ablation_and_sweep_configs_smoke_validate():
         "ablations/no_kd.yaml",
         "ablations/no_uncertainty.yaml",
         "ablations/student_only.yaml",
+        "profiles/local.yaml",
+        "profiles/dev.yaml",
+        "profiles/cpu.yaml",
+        "profiles/gpu.yaml",
+        "profiles/kaggle.yaml",
         "sweeps/full.yaml",
     ):
         raw = loader.load(base_dir / relative_path)
