@@ -22,8 +22,8 @@ repos:
     hooks:
       - id: mypy
         name: mypy type check
-        entry: mypy ugtsdti/ --strict
-        language: python
+        entry: conda run -n ugtsdti mypy ugtsdti/ --strict
+        language: system
         types: [python]
         pass_filenames: false
 
