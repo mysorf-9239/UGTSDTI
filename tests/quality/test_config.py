@@ -468,6 +468,17 @@ class TestTeacherStudentAvailability:
     def test_full_config_with_teacher_and_kd_passes(self):
         assert_valid(_full_teacher_student_cfg())
 
+    def test_teacher_optional_in_student_only_config(self):
+        cfg = _minimal_student_only_cfg()
+        assert "teacher" not in cfg["roles"]
+        assert_valid(cfg)
+
+    def test_teacher_can_use_richer_modalities_than_student(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["modalities"]["teacher"]["uses"] = ["sequence", "structure"]
+        cfg["modalities"]["student"]["uses"] = ["sequence"]
+        assert_valid(cfg)
+
 
 class TestBaselineNoopPath:
     """3g: baseline no-op path valid when teacher/KD/uncertainty disabled."""

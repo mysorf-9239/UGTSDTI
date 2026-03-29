@@ -182,17 +182,17 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
   - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
   - _Requirements: REQ-ARCH-001, REQ-DEC-001, REQ-POST-001, REQ-ARCH-004, Section 9 (Minimal Baseline)_
 
-- [ ] 8. Mở rộng teacher branch/ — Asymmetry, Optional Teacher, Richer Modality Support
-  - [ ] 8.1 Thêm teacher-aware fixtures và example graph/role configs
+- [x] 8. Mở rộng teacher branch/ — Asymmetry, Optional Teacher, Richer Modality Support
+  - [x] 8.1 Thêm teacher-aware fixtures và example graph/role configs
     - Teacher có thể dùng modality phong phú hơn student
     - Student vẫn là branch deployable/inductive mặc định
     - _Requirements: REQ-ARCH-002, REQ-DATA-003_
-  - [ ] 8.2 Mở rộng validation/tests cho teacher-student availability
+  - [x] 8.2 Mở rộng validation/tests cho teacher-student availability
     - Test teacher optional
     - Test teacher richer modality than student
     - Test config vi phạm asymmetry assumptions bị reject rõ ràng
     - _Requirements: REQ-ARCH-002, REQ-CONF-002, REQ-DATA-003_
-  - [ ] 8.3 Viết integration test cho student+teacher path
+  - [x] 8.3 Viết integration test cho student+teacher path
     - Verify `teacher.logits` được tạo đúng qua role binding
     - Verify identity decision fallback vẫn hoạt động khi decision strategy chưa cần trust signals
     - _Requirements: REQ-ARCH-002, REQ-ROLE-001, REQ-DEC-002_
