@@ -197,7 +197,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Verify identity decision fallback vẫn hoạt động khi decision strategy chưa cần trust signals
     - _Requirements: REQ-ARCH-002, REQ-ROLE-001, REQ-DEC-002_
 
-- [ ] 9. Checkpoint 2 — Teacher branch được thêm vào và semantics giữ đúng
+- [x] 9. Checkpoint 2 — Teacher branch được thêm vào và semantics giữ đúng
   - Thêm teacher encoder + teacher head vào graph config
   - Verify `teacher.logits` được tạo đúng qua role binding
   - Verify config teacher-richer-modality chạy được mà không ép student mang modality thừa
