@@ -5,6 +5,8 @@ REQ-GRAPH-002, REQ-GRAPH-003, REQ-ARCH-004
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from ugtsdti.core.errors import (
     InvalidConfigError,
@@ -268,6 +270,60 @@ class TestGraphPlannerTopologicalOrder:
         planner = GraphPlanner(registry)
         plan = planner.plan(builder.build(cfg))
         assert plan.order == ["a", "b", "c"]
+
+
+@st.composite
+def _acyclic_graph_cfgs(draw):
+    names = draw(
+        st.lists(
+            st.sampled_from(["a", "b", "c", "d", "e"]),
+            min_size=1,
+            max_size=5,
+            unique=True,
+        )
+    )
+    nodes = []
+    for index, name in enumerate(names):
+        deps = [] if index == 0 else draw(st.lists(st.sampled_from(names[:index]), unique=True))
+        nodes.append(
+            {
+                "name": name,
+                "type_key": "prop.node",
+                "inputs": [f"{dep}.out" for dep in deps],
+            }
+        )
+    return {"nodes": nodes}
+
+
+@given(_acyclic_graph_cfgs())
+def test_graph_builder_and_planner_preserve_topological_validity_for_acyclic_graphs(cfg):
+    spec = NodePluginSpec(type_key="prop.node", output_attrs=["out"])
+    registry = _make_registry(spec)
+    builder = GraphBuilder(registry)
+    planner = GraphPlanner(registry)
+
+    plan = planner.plan(builder.build(cfg))
+    positions = {name: index for index, name in enumerate(plan.order)}
+
+    for node_name, deps in plan.edges.items():
+        for dep in deps:
+            assert positions[dep] < positions[node_name]
+
+
+@given(st.lists(st.sampled_from(["a", "b", "c", "d"]), min_size=2, max_size=4, unique=True))
+def test_graph_builder_rejects_cycles_for_generated_graphs(names):
+    spec = NodePluginSpec(type_key="prop.node", output_attrs=["out"])
+    registry = _make_registry(spec)
+    builder = GraphBuilder(registry)
+
+    nodes = []
+    for index, name in enumerate(names):
+        inputs = [f"{names[index - 1]}.out"] if index > 0 else []
+        nodes.append({"name": name, "type_key": "prop.node", "inputs": inputs})
+    nodes[0]["inputs"] = [f"{names[-1]}.out"]
+
+    with pytest.raises(InvalidInteractionGraphError):
+        builder.build({"nodes": nodes})
 
     def test_dry_run_does_not_instantiate_runtime(self):
         """Planner.plan() must not call build_runtime (no weights loaded)."""

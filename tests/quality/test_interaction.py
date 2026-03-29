@@ -5,6 +5,8 @@ REQ-INT-001, REQ-ARCH-001
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import InvalidInteractionGraphError, MissingDependencyError
@@ -254,3 +256,69 @@ class TestDiagnosticsInteraction:
             ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
         )
         assert outputs == {}
+
+
+@st.composite
+def _interaction_dag_cfgs(draw):
+    names = draw(
+        st.lists(
+            st.sampled_from(["mod_a", "mod_b", "mod_c", "mod_d", "mod_e"]),
+            min_size=1,
+            max_size=5,
+            unique=True,
+        )
+    )
+    dependencies = {}
+    cfg = {"order": names, "dependencies": dependencies}
+
+    for index, name in enumerate(names):
+        deps = [] if index == 0 else draw(st.lists(st.sampled_from(names[:index]), unique=True))
+        dependencies[name] = deps
+        inputs = ["student.logits"] if not deps else [f"interaction.{dep}.out" for dep in deps]
+        cfg[name] = {
+            "type": "prop",
+            "inputs": inputs,
+            "params": {"output_key": f"interaction.{name}.out"},
+        }
+    return cfg
+
+
+@given(_interaction_dag_cfgs())
+def test_interaction_planner_keeps_dependencies_before_generated_modules(cfg):
+    registry = _make_registry(
+        InteractionPluginSpec(type_key="prop", output_keys_fn=lambda params: [params["output_key"]])
+    )
+    planner = InteractionPlanner(registry)
+
+    plan = planner.plan(cfg, available_inputs={"student.logits"})
+    positions = {name: index for index, name in enumerate(plan.order)}
+
+    for name, deps in cfg["dependencies"].items():
+        for dep in deps:
+            assert positions[dep] < positions[name]
+
+
+@given(st.lists(st.sampled_from(["a", "b", "c", "d"]), min_size=2, max_size=4, unique=True))
+def test_interaction_planner_rejects_cycles_for_generated_modules(names):
+    registry = _make_registry(
+        InteractionPluginSpec(type_key="prop", output_keys_fn=lambda params: [params["output_key"]])
+    )
+    planner = InteractionPlanner(registry)
+
+    cfg = {
+        "order": names,
+        "dependencies": {},
+    }
+    for index, name in enumerate(names):
+        deps = [names[index - 1]] if index > 0 else []
+        cfg["dependencies"][name] = deps
+        cfg[name] = {
+            "type": "prop",
+            "inputs": ["student.logits"] if not deps else [f"interaction.{deps[0]}.out"],
+            "params": {"output_key": f"interaction.{name}.out"},
+        }
+    cfg["dependencies"][names[0]] = [names[-1]]
+    cfg[names[0]]["inputs"] = [f"interaction.{names[-1]}.out"]
+
+    with pytest.raises(InvalidInteractionGraphError):
+        planner.plan(cfg, available_inputs={"student.logits"})

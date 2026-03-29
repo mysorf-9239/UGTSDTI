@@ -111,7 +111,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
   - [x] 3.8 Triển khai `NodeRuntime` base class trong `ugtsdti/nodes/base.py`
     - Abstract `forward(inputs, context) -> dict[str, Any]`
     - _Requirements: REQ-GRAPH-001_
-  - [ ]* 3.9 Viết property test cho GraphBuilder/Planner invariants
+  - [x]* 3.9 Viết property test cho GraphBuilder/Planner invariants
     - **Property 4: GraphBuilder với bất kỳ DAG hợp lệ nào luôn tạo topological order hợp lệ**
     - **Property 5: GraphBuilder với graph có cycle luôn raise lỗi**
     - **Validates: REQ-GRAPH-002**
@@ -147,7 +147,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test acyclicity, single producer per interaction key, unresolved input reporting
     - Test no-op interaction không phá state contracts
     - _Requirements: REQ-INT-001, REQ-ARCH-001_
-  - [ ]* 5.5 Viết property test cho InteractionPlanner acyclicity
+  - [x]* 5.5 Viết property test cho InteractionPlanner acyclicity
     - **Property 6: InteractionPlanner với bất kỳ DAG interaction hợp lệ luôn tạo order hợp lệ**
     - **Property 7: InteractionPlanner với cycle luôn raise `InvalidInteractionGraphError`**
     - **Validates: REQ-INT-001**
