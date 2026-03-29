@@ -103,15 +103,15 @@ Có 4 checkpoint:
   - Verify run identity và reproducibility metadata nhất quán
   - _Requirements: REQ-HARD-003, REQ-HARD-004, REQ-HARD-005, REQ-HARD-006_
 
-- [ ] 7. Sửa metric semantics
-  - [ ] 7.1 Thay backend metric bằng implementation chuẩn hoặc implementation đối chiếu chuẩn
+- [x] 7. Sửa metric semantics
+  - [x] 7.1 Thay backend metric bằng implementation chuẩn hoặc implementation đối chiếu chuẩn
     - _Requirements: REQ-HARD-007_
-  - [ ] 7.2 Chuẩn hóa label/logit shape validation trong `MetricsReporter`
+  - [x] 7.2 Chuẩn hóa label/logit shape validation trong `MetricsReporter`
     - _Requirements: REQ-HARD-007_
-  - [ ] 7.3 Viết reference tests cho `f1`, `auroc`, `auprc`
+  - [x] 7.3 Viết reference tests cho `f1`, `auroc`, `auprc`
     - So khớp known-good fixtures
     - _Requirements: REQ-HARD-007_
-  - [ ] 7.4 Viết tests cho scenario-wise metrics correctness
+  - [x] 7.4 Viết tests cho scenario-wise metrics correctness
     - _Requirements: REQ-HARD-007_
 
 - [ ] 8. Sửa uncertainty semantics
