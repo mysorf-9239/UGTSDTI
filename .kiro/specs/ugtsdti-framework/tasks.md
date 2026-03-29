@@ -1,0 +1,426 @@
+# Kế Hoạch Triển Khai: UGTSDTI Framework
+
+## Tổng Quan
+
+Triển khai theo thứ tự từ design.md Section 21: core → config → graph → roles → minimal interaction/decision/postprocess → teacher branch → advanced interaction/decision → data → runtime/logging → trainer/evaluator/cli → artifacts/spec collateral.
+
+Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
+1. Student-only pipeline chạy được (core + config + graph + roles + no-op interaction + identity decision + hard loss + shared executor)
+2. Teacher branch được thêm vào và semantics bất đối xứng giữ đúng
+3. KD interaction hoạt động end-to-end với explicit loss mapping
+4. Uncertainty + trust-aware decision hoạt động
+5. Full UGTS pipeline (S1-S4 + reproducibility bundle + ablation/sweep + trace)
+
+## Tasks
+
+- [ ] 1. Xây dựng core/ — State, Context, Error Taxonomy, Schema, Naming
+  - [ ] 1.1 Triển khai `State` và `StateWriter` trong `ugtsdti/core/state.py`
+    - Implement `State` với `get`, `has`, `keys`, `snapshot` (read-only public surface)
+    - Implement `StateWriter` với `commit(producer, outputs)` — write-once, single-producer
+    - Raise `KeyCollisionError` khi ghi đè key đã tồn tại trong cùng forward pass
+    - _Requirements: REQ-STATE-001, REQ-STATE-002_
+  - [ ] 1.2 Viết unit tests cho State invariants
+    - Test write-once, single-producer, monotonic growth
+    - Test `snapshot()` không cho phép mutate lại state nội bộ
+    - _Requirements: REQ-STATE-001, REQ-STATE-002_
+  - [ ] 1.3 Triển khai `ExecutionContext` trong `ugtsdti/core/context.py`
+    - Dataclass với `mode`, `seed`, `device`, `deterministic`, `precision`
+    - _Requirements: REQ-REPRO-001, REQ-QUAL-002_
+  - [ ] 1.4 Triển khai error taxonomy trong `ugtsdti/core/errors.py`
+    - Định nghĩa tất cả error classes từ design Section 6.3
+    - Mỗi error chứa: stage, component, offending key hoặc config field, message, optional debug payload
+    - _Requirements: REQ-QUAL-001_
+  - [ ] 1.5 Triển khai `StateSpec`, `StateSchemaBuilder`, `BatchSpec` trong `ugtsdti/core/schema.py`
+    - `StateSpec` dataclass với key, stage, required, shape, dtype, semantic
+    - `StateSchemaBuilder.build_for_experiment(cfg)` trả về schema fragments derive từ config và plugin specs
+    - `BatchSpec` với `required_common` và `conditional_keys`
+    - Enforce canonical key helpers và reserved namespaces cho graph/role/decision/loss/metrics/diagnostics keys
+    - _Requirements: REQ-STATE-004, REQ-DATA-003, REQ-ARCH-004_
+  - [ ] 1.6 Viết unit tests cho naming contracts và schema-derived validation
+    - Test malformed key namespaces bị reject
+    - Test role/decision keys sai convention bị reject
+    - Test `StateSchemaBuilder` với cùng normalized config luôn tạo schema tương đương
+    - _Requirements: REQ-STATE-004, REQ-ARCH-004, REQ-CONF-003_
+  - [ ]* 1.7 Viết property test cho StateSchemaBuilder idempotency
+    - **Property 1: build_for_experiment với cùng config luôn trả về schema tương đương**
+    - **Validates: REQ-STATE-004, REQ-CONF-003**
+
+- [ ] 2. Xây dựng config/ — Loader, Validator, Normalizer, Models
+  - [ ] 2.1 Triển khai `NormalizedConfig` dataclass trong `ugtsdti/config/models.py`
+    - Tất cả top-level sections từ design Section 7.2
+    - _Requirements: REQ-CONF-001_
+  - [ ] 2.2 Triển khai `ConfigLoader` trong `ugtsdti/config/loader.py`
+    - Load YAML, resolve `extends` deterministically
+    - _Requirements: REQ-CONF-001, REQ-CONF-003_
+  - [ ] 2.3 Triển khai `ConfigValidator` trong `ugtsdti/config/validate.py`
+    - Required-section validation → schema validation → cross-section validation
+    - Cross-section checks: roles → graph outputs, interaction acyclic, decision prerequisites, loss mappings, modality compatibility, teacher/student availability
+    - Validate stable naming và reserved namespaces trước runtime
+    - Fail fast với lỗi mô tả rõ vi phạm
+    - _Requirements: REQ-CONF-002, REQ-ARCH-002, REQ-ARCH-004_
+  - [ ] 2.4 Viết unit tests cho cross-section validation
+    - Test từng cross-section rule với config vi phạm
+    - Test baseline no-op path hợp lệ khi teacher/KD/uncertainty bị disable
+    - _Requirements: REQ-CONF-002_
+  - [ ] 2.5 Triển khai `ConfigNormalizer` trong `ugtsdti/config/normalize.py`
+    - Normalize → `NormalizedConfig`; idempotent; serializable; stable để hash
+    - Không tự ý di chuyển component giữa stage hoặc suy luận hidden loss mappings
+    - _Requirements: REQ-CONF-003_
+  - [ ]* 2.6 Viết property test cho normalization idempotency
+    - **Property 2: normalize(normalize(cfg)) == normalize(cfg) với mọi valid config**
+    - **Property 3: parse -> normalize -> serialize -> parse giữ semantic equivalence**
+    - **Validates: REQ-CONF-003**
+
+- [ ] 3. Xây dựng graph/ — Static Planning, Dry-run, Runtime Engine, Trace
+  - [ ] 3.1 Triển khai `NodePluginSpec`, `NodeDefinition`, `GraphPlan` trong `ugtsdti/graph/specs.py`
+    - `NodePluginSpec`: type_key, output_attrs, capabilities, input_kinds
+    - `NodeDefinition`: name, type_key, inputs, params
+    - `GraphPlan`: node_definitions, order, produced_keys, producers, edges
+    - _Requirements: REQ-GRAPH-001, REQ-GRAPH-002_
+  - [ ] 3.2 Triển khai `NodeRegistry` trong `ugtsdti/graph/registry.py`
+    - `register(spec, runtime_cls)`, `get_spec(type_key)`, `build_runtime(definition)`
+    - _Requirements: REQ-GRAPH-001_
+  - [ ] 3.3 Triển khai `GraphBuilder` trong `ugtsdti/graph/builder.py`
+    - Parse `graph.nodes`, resolve output keys từ plugin specs, build producer map
+    - Validate: unique names, explicit deps, single producer per key, no cycles
+    - Enforce graph naming convention `<node>.<attr>` và reserved namespace rules
+    - Output: `GraphPlan`
+    - _Requirements: REQ-GRAPH-002, REQ-ARCH-004_
+  - [ ] 3.4 Triển khai `GraphPlanner` trong `ugtsdti/graph/planner.py`
+    - Topological sort deterministic với stable tie-break
+    - Dry-run validation dùng `NodePluginSpec` (không load weights hoặc external resources)
+    - Dùng adjacency/in-degree để giữ DAG validation ở mức `O(V + E)`
+    - Report unresolved dependencies rõ ràng
+    - _Requirements: REQ-GRAPH-002, REQ-GRAPH-003, REQ-QUAL-004_
+  - [ ] 3.5 Triển khai `GraphEngine` trong `ugtsdti/graph/engine.py`
+    - Runtime loop: materialize declared inputs → forward → validate outputs → commit outputs qua `StateWriter`
+    - Validation hooks: input presence, undeclared output attrs, key collision, device/dtype, numerical safety khi strict mode bật
+    - MUST NOT deep-copy toàn bộ `State` ở mỗi node; chỉ materialize input view cần thiết
+    - Emit per-node execution events cho trace/debug mode
+    - _Requirements: REQ-GRAPH-002, REQ-GRAPH-003, REQ-STATE-003, REQ-QUAL-002, REQ-QUAL-004_
+  - [ ] 3.6 Viết unit tests cho GraphBuilder và GraphPlanner
+    - Test deterministic topological order
+    - Test cycle detection, unresolved dependency reporting, single-producer enforcement
+    - Test invalid graph key naming bị reject
+    - _Requirements: REQ-GRAPH-002, REQ-GRAPH-003, REQ-ARCH-004_
+  - [ ] 3.7 Viết unit tests cho GraphEngine validation hooks và trace
+    - Test undeclared output attr bị từ chối
+    - Test node đọc ngoài declared inputs bị từ chối
+    - Test debug trace chứa node order, inputs consumed, outputs produced
+    - _Requirements: REQ-STATE-003, REQ-GRAPH-003, REQ-QUAL-002_
+  - [ ] 3.8 Triển khai `NodeRuntime` base class trong `ugtsdti/nodes/base.py`
+    - Abstract `forward(inputs, context) -> dict[str, Any]`
+    - _Requirements: REQ-GRAPH-001_
+  - [ ]* 3.9 Viết property test cho GraphBuilder/Planner invariants
+    - **Property 4: GraphBuilder với bất kỳ DAG hợp lệ nào luôn tạo topological order hợp lệ**
+    - **Property 5: GraphBuilder với graph có cycle luôn raise lỗi**
+    - **Validates: REQ-GRAPH-002**
+
+- [ ] 4. Xây dựng roles/ — Canonical Role Binding
+  - [ ] 4.1 Triển khai `RoleBinding` dataclass và `RoleBinder` trong `ugtsdti/roles/binder.py`
+    - `RoleBinding`: role, outputs, aggregation (first | mean)
+    - `RoleBinder.bind(state, plan, context)` → commit `<role>.logits` vào `State`
+    - Validate: graph outputs tồn tại, shape-compatible, resulting logits schema hợp lệ
+    - Enforce canonical role naming `student.logits`, `teacher.logits`
+    - Fail rõ ràng với `InvalidRoleBindingError`
+    - _Requirements: REQ-ROLE-001, REQ-STATE-004, REQ-ARCH-004_
+  - [ ] 4.2 Viết unit tests cho RoleBinder validation
+    - Test missing graph output → `InvalidRoleBindingError`
+    - Test shape incompatibility → `InvalidRoleBindingError`
+    - Test invalid role key naming bị reject
+    - _Requirements: REQ-ROLE-001, REQ-ARCH-004_
+
+- [ ] 5. Xây dựng interaction foundation/ — Static Contracts, Registry, No-op Path
+  - [ ] 5.1 Triển khai `InteractionPluginSpec`, `InteractionDefinition`, `InteractionRuntime` trong `ugtsdti/interaction/base.py`
+    - `InteractionPluginSpec` phải khai báo output keys đủ cho planning và producer-map validation
+    - `InteractionDefinition`: name, type_key, inputs, params, dependencies
+    - _Requirements: REQ-INT-001_
+  - [ ] 5.2 Triển khai `InteractionRegistry` và `InteractionPlanner` trong `ugtsdti/interaction/registry.py`
+    - Validate: execution order, dependency completeness, no cycles, single producer per key
+    - Validate all declared inputs resolvable từ role outputs hoặc prior interaction outputs
+    - Không suy luận outputs từ runtime instance; chỉ dùng interaction specs
+    - _Requirements: REQ-INT-001, REQ-ARCH-003_
+  - [ ] 5.3 Triển khai built-in `noop` interaction path trong namespace `ugtsdti/interaction/`
+    - Dùng cho minimal baseline để giữ stage boundary mà không emit research outputs
+    - _Requirements: REQ-ARCH-001, REQ-INT-001_
+  - [ ] 5.4 Viết unit tests cho InteractionPlanner và no-op path
+    - Test acyclicity, single producer per interaction key, unresolved input reporting
+    - Test no-op interaction không phá state contracts
+    - _Requirements: REQ-INT-001, REQ-ARCH-001_
+  - [ ]* 5.5 Viết property test cho InteractionPlanner acyclicity
+    - **Property 6: InteractionPlanner với bất kỳ DAG interaction hợp lệ luôn tạo order hợp lệ**
+    - **Property 7: InteractionPlanner với cycle luôn raise `InvalidInteractionGraphError`**
+    - **Validates: REQ-INT-001**
+
+- [ ] 6. Xây dựng minimal decision/postprocess/runtime path — Identity Decision, Hard Loss, Shared Executor
+  - [ ] 6.1 Triển khai `DecisionModule` abstract base và `IdentityDecisionModule` trong `ugtsdti/decision/base.py` và `ugtsdti/decision/module.py`
+    - Abstract `forward(state, context) -> dict[str, Any]`
+    - Contract: trả về final `logits`; baseline không bắt buộc emit `gate.alpha`
+    - Identity path copy canonical branch logits sang final `logits`
+    - _Requirements: REQ-DEC-001, REQ-DEC-002_
+  - [ ] 6.2 Triển khai minimal `LossComposer` và `LossMapValidator` trong `ugtsdti/postprocess/loss.py`
+    - Baseline hard-loss-only path nhưng vẫn giữ explicit composition surface
+    - Emit: `loss.total`, `loss.hard`
+    - Không include interaction output nào nếu không có mapping explicit
+    - _Requirements: REQ-POST-001, REQ-ARCH-003_
+  - [ ] 6.3 Triển khai `PipelineExecutor` shared trong `ugtsdti/trainer/trainer.py`
+    - `run_until_decision(batch, cfg, context) -> State`
+    - Thực thi: init `State` → validate batch/spec → graph → role binding → interaction → decision
+    - Emit human-readable stage trace và state boundary summaries ở debug mode
+    - MUST NOT mutate `State` ngoài `StateWriter`; MUST NOT dựa vào shared mutable state giữa workers/processes
+    - _Requirements: REQ-ARCH-001, REQ-ARCH-003, REQ-GRAPH-003, REQ-QUAL-001, REQ-QUAL-004_
+  - [ ] 6.4 Viết integration tests cho minimal baseline path
+    - Chạy minimal baseline config với student encoder + student head + no-op interaction + identity decision + hard loss
+    - Verify `student.logits` và final `logits` được tạo đúng stage
+    - Verify debug trace và state boundary summaries được tạo đúng
+    - _Requirements: REQ-ARCH-001, REQ-DEC-001, REQ-POST-001, REQ-GRAPH-003_
+
+- [ ] 7. Checkpoint 1 — Student-only pipeline chạy được
+  - Đảm bảo forward pass hoàn chỉnh: Batch → Graph → Role Binding → no-op Interaction → Identity Decision → hard Loss
+  - Verify minimal baseline không bypass stage nào
+  - Verify `student.logits`, final `logits`, `loss.total` được tạo đúng stage và đúng naming contract
+  - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
+  - _Requirements: REQ-ARCH-001, REQ-DEC-001, REQ-POST-001, REQ-ARCH-004, Section 9 (Minimal Baseline)_
+
+- [ ] 8. Mở rộng teacher branch/ — Asymmetry, Optional Teacher, Richer Modality Support
+  - [ ] 8.1 Thêm teacher-aware fixtures và example graph/role configs
+    - Teacher có thể dùng modality phong phú hơn student
+    - Student vẫn là branch deployable/inductive mặc định
+    - _Requirements: REQ-ARCH-002, REQ-DATA-003_
+  - [ ] 8.2 Mở rộng validation/tests cho teacher-student availability
+    - Test teacher optional
+    - Test teacher richer modality than student
+    - Test config vi phạm asymmetry assumptions bị reject rõ ràng
+    - _Requirements: REQ-ARCH-002, REQ-CONF-002, REQ-DATA-003_
+  - [ ] 8.3 Viết integration test cho student+teacher path
+    - Verify `teacher.logits` được tạo đúng qua role binding
+    - Verify identity decision fallback vẫn hoạt động khi decision strategy chưa cần trust signals
+    - _Requirements: REQ-ARCH-002, REQ-ROLE-001, REQ-DEC-002_
+
+- [ ] 9. Checkpoint 2 — Teacher branch được thêm vào và semantics giữ đúng
+  - Thêm teacher encoder + teacher head vào graph config
+  - Verify `teacher.logits` được tạo đúng qua role binding
+  - Verify config teacher-richer-modality chạy được mà không ép student mang modality thừa
+  - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
+  - _Requirements: REQ-ARCH-002, REQ-ROLE-001, REQ-DATA-003_
+
+- [ ] 10. Xây dựng advanced interaction/ — KD, Uncertainty, Diagnostics
+  - [ ] 10.1 Triển khai KD interaction module trong `ugtsdti/interaction/kd.py`
+    - Hỗ trợ modes: logits, feature, relation
+    - Logits mode: `binary_logits_to_dist(logits, temperature)` → shape `(B, 2)`
+    - Emit: `interaction.kd.loss_component`, `kd.teacher_target`, `kd.student_target`
+    - Hỗ trợ temperature > 0, enable/disable, scenario-aware activation
+    - _Requirements: REQ-INT-002_
+  - [ ] 10.2 Viết tests cho KD logits distribution và explicit outputs
+    - Test `binary_logits_to_dist` luôn tạo distribution hợp lệ
+    - Test teacher → student direction là mặc định
+    - Test output keys stable và hợp naming contract
+    - _Requirements: REQ-INT-002, REQ-ARCH-004, REQ-QUAL-002_
+  - [ ] 10.3 Triển khai uncertainty interaction module trong `ugtsdti/interaction/uncertainty.py`
+    - Hỗ trợ teacher-only, student-only, hoặc both
+    - Emit: `teacher.var`, `student.var` — finite và non-negative
+    - _Requirements: REQ-INT-003_
+  - [ ] 10.4 Viết tests cho uncertainty outputs
+    - Test uncertainty outputs luôn finite và non-negative với mọi valid input
+    - Test teacher-only và student-only paths
+    - _Requirements: REQ-INT-003, REQ-QUAL-002_
+  - [ ] 10.5 Triển khai diagnostics interaction module trong `ugtsdti/interaction/diagnostics.py`
+    - Emit: `interaction.disagreement` và calibration helper stats
+    - Ownership explicit, output keys stable
+    - _Requirements: REQ-POST-002, REQ-ARCH-004_
+  - [ ]* 10.6 Viết property tests cho KD/uncertainty hardening
+    - **Property 8: KD logits mode luôn trả về distribution sum=1, non-negative với mọi finite logits**
+    - **Property 9: uncertainty outputs luôn finite và non-negative với mọi valid input**
+    - **Validates: REQ-INT-002, REQ-INT-003, REQ-QUAL-002**
+
+- [ ] 11. Checkpoint 3 — KD interaction hoạt động end-to-end
+  - Wire KD module vào interaction stage với teacher → student direction
+  - Verify `interaction.kd.loss_component` được emit và map vào loss config
+  - Verify teacher absent hoặc KD disabled đi qua explicit config path thay vì hidden behavior
+  - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
+  - _Requirements: REQ-INT-002, REQ-POST-001, REQ-ABL-001_
+
+- [ ] 12. Xây dựng advanced decision/ — Trust, Policy, Soft/Hard Modules
+  - [ ] 12.1 Triển khai `TrustEstimator` trong `ugtsdti/decision/trust.py`
+    - Tính trust signals: alpha, raw gate features, uncertainty-aware scores
+    - _Requirements: REQ-DEC-002_
+  - [ ] 12.2 Triển khai `DecisionPolicy` trong `ugtsdti/decision/policy.py`
+    - Biến trust signals + branch logits thành final `logits`
+    - _Requirements: REQ-DEC-002_
+  - [ ] 12.3 Triển khai `SoftBlendingDecisionModule` và `HardSelectionDecisionModule` trong `ugtsdti/decision/module.py`
+    - `SoftBlendingDecisionModule`: `y = alpha * y_teacher + (1 - alpha) * y_student`
+    - `HardSelectionDecisionModule`: chọn branch theo threshold/rule
+    - Enforce output namespace `logits`, optional `gate.alpha`, optional `gate.*`
+    - Fallback order: normal → single-branch → configured fallback → explicit failure
+    - Validate: required inputs tồn tại, alpha finite và `[0, 1]`, final logits finite
+    - _Requirements: REQ-DEC-001, REQ-DEC-002, REQ-ARCH-004, REQ-QUAL-002_
+  - [ ] 12.4 Viết unit tests cho decision fallback và output validation
+    - Test teacher absent → single-branch fallback
+    - Test uncertainty unavailable → configured fallback
+    - Test invalid alpha range hoặc malformed `gate.*` outputs bị reject
+    - _Requirements: REQ-DEC-002, REQ-ARCH-004, REQ-QUAL-002_
+  - [ ]* 12.5 Viết property test cho alpha constraints
+    - **Property 10: `SoftBlendingDecisionModule` luôn emit `gate.alpha` trong [0, 1] và finite**
+    - **Validates: REQ-DEC-002**
+
+- [ ] 13. Xây dựng advanced postprocess/ — Composite Loss, Metrics, Diagnostics Reporting
+  - [ ] 13.1 Mở rộng `LossComposer` trong `ugtsdti/postprocess/loss.py`
+    - Nhận normalized loss config, `State` sau decision, labels
+    - Emit: `loss.total`, `loss.hard`, `loss.kd` nếu applicable
+    - Chỉ compose interaction outputs được map explicit trong config
+    - Canonical: `L = (1 - lambda) * L_hard + lambda * L_KD`
+    - _Requirements: REQ-POST-001_
+  - [ ] 13.2 Viết unit tests cho `LossComposer` và `LossMapValidator`
+    - Test invalid loss mapping bị từ chối rõ ràng
+    - Test interaction output không có trong loss map không bao giờ được include
+    - _Requirements: REQ-POST-001, REQ-QUAL-001_
+  - [ ] 13.3 Triển khai `MetricsReporter` trong `ugtsdti/postprocess/metrics.py`
+    - Compute per-batch/per-split: AUROC, AUPRC, F1
+    - Convert logits → probabilities trước khi threshold (không threshold raw logits)
+    - Aggregate per-scenario reports khi `metrics.by_scenario: true`
+    - Emit diagnostics với stable naming: `diagnostics.disagreement`, `diagnostics.gate_alpha`, `diagnostics.uncertainty_error`
+    - _Requirements: REQ-POST-002, REQ-EVAL-001, REQ-ARCH-004_
+  - [ ] 13.4 Viết unit tests cho `MetricsReporter`
+    - Test F1 không threshold trực tiếp raw logits
+    - Test per-scenario metrics được tách biệt đúng
+    - Test diagnostics outputs đúng namespace
+    - _Requirements: REQ-POST-002, REQ-EVAL-001, REQ-ARCH-004_
+
+- [ ] 14. Checkpoint 4 — Uncertainty + trust-aware decision hoạt động
+  - Wire uncertainty module vào interaction stage và advanced decision modules
+  - Verify `teacher.var` và `student.var` được emit và finite/non-negative
+  - Verify decision module có thể consume uncertainty outputs
+  - Verify `gate.alpha` behavior được trace và thỏa range constraints
+  - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
+  - _Requirements: REQ-INT-003, REQ-DEC-002, REQ-POST-002_
+
+- [ ] 15. Xây dựng data/ — Contracts, Acquisition, Preprocessing, Splitting, Loader, Validation
+  - [ ] 15.1 Triển khai data contracts trong `ugtsdti/data/contracts.py`
+    - `DatasetVersion`, `SplitManifest` dataclasses từ design Section 6.6
+    - _Requirements: REQ-DATA-002_
+  - [ ] 15.2 Triển khai `DataAcquisition` trong `ugtsdti/data/acquisition.py`
+    - Download/export raw dataset (pyTDC) → `data/raw/<dataset>.csv`
+    - Tách hoàn toàn khỏi runtime; không được gọi từ train/eval/infer
+    - _Requirements: REQ-DATA-001_
+  - [ ] 15.3 Triển khai `DataPreprocessor` trong `ugtsdti/data/preprocessing.py`
+    - Raw → materialized features: tokenized sequences, graphs, ids, labels
+    - Output: `data/processed/<dataset>/<preprocessing_version>/...`
+    - _Requirements: REQ-DATA-001_
+  - [ ] 15.4 Triển khai `DataSplitter` trong `ugtsdti/data/splitting.py`
+    - Deterministic splits cho S1, S2, S3, S4 với seed
+    - Output: split files + `SplitManifest`
+    - _Requirements: REQ-DATA-002, REQ-EVAL-001_
+  - [ ] 15.5 Viết tests cho split determinism và manifest consistency
+    - Test cùng seed/dataset luôn tạo splits giống nhau
+    - Test split manifest lưu đủ dataset, preprocessing, split version, seed, scenarios
+    - _Requirements: REQ-DATA-002, REQ-REPRO-001_
+  - [ ] 15.6 Triển khai `DataLoaderFactory` trong `ugtsdti/data/loader.py`
+    - Chỉ đọc materialized data; không gọi pyTDC
+    - Build: dataloaders, `BatchSpec`, dataset version metadata
+    - _Requirements: REQ-DATA-001, REQ-DATA-003_
+  - [ ] 15.7 Triển khai `DataValidator` trong `ugtsdti/data/validate.py`
+    - Artifact presence check, split/version consistency, batch contract validation
+    - Trong debug mode validate mỗi batch; normal mode validate ít nhất batch đầu tiên
+    - NaN/Inf hoặc missing required keys → raise explicit error
+    - _Requirements: REQ-DATA-004, REQ-QUAL-001_
+  - [ ] 15.8 Viết unit tests cho `DataValidator`
+    - Test missing `labels` → `BatchSchemaError`
+    - Test version mismatch hoặc artifact thiếu → explicit error
+    - Test NaN trong batch → explicit error
+    - _Requirements: REQ-DATA-004, REQ-QUAL-001_
+
+- [ ] 16. Xây dựng runtime và logging/ — Seed, Identity, Adapter, Checkpoint, Loggers
+  - [ ] 16.1 Triển khai seed management trong `ugtsdti/runtime/seed.py`
+    - Set Python, NumPy, torch seeds; deterministic algorithm toggle; worker-specific seeding
+    - Log assumption về cross-platform reproducibility
+    - _Requirements: REQ-REPRO-001_
+  - [ ] 16.2 Triển khai `ExperimentIdentity` và reproducibility-key helpers trong `ugtsdti/runtime/identity.py`
+    - `ExperimentIdentity`: `run_id`, `config_hash`, `git_commit`, `timestamp`
+    - Tách rõ `unique run identity` khỏi reproducibility tuple `(config_hash, dataset_version, preprocessing_version, split_version, seed)`
+    - _Requirements: REQ-REPRO-002_
+  - [ ] 16.3 Triển khai `RuntimeAdapter` trong `ugtsdti/runtime/adapter.py`
+    - Điều chỉnh operational knobs: dataloader kwargs, artifact/checkpoint dirs, debug defaults
+    - MUST NOT thay đổi graph/role/interaction/loss semantics
+    - _Requirements: REQ-OPS-003_
+  - [ ] 16.4 Triển khai `CheckpointBundle` và checkpoint I/O trong `ugtsdti/runtime/checkpoint.py`
+    - Bundle: model state, optimizer state, scheduler state, RNG state, epoch/step, identity, config, dataset/split metadata
+    - Atomic write (temp-then-rename)
+    - Resume: validate integrity → validate config compatibility → restore RNG
+    - _Requirements: REQ-QUAL-003_
+  - [ ] 16.5 Viết unit tests cho checkpoint resume validation
+    - Test corrupt bundle → `CheckpointCorruptedError`
+    - Test config mismatch hoặc thiếu dataset/split metadata → explicit error
+    - _Requirements: REQ-QUAL-003_
+  - [ ] 16.6 Triển khai logging abstraction trong `ugtsdti/logging/`
+    - `Logger` abstract interface trong `base.py`
+    - `FileLogger` offline-capable trong `file_logger.py`
+    - `WandbLogger` với fallback policy trong `wandb_logger.py`
+    - `CompositeLogger` fan-out nhiều backends trong `composite.py`
+    - Pipeline core MUST NOT import `wandb` trực tiếp
+    - _Requirements: REQ-OPS-001_
+  - [ ]* 16.7 Cung cấp environment specs hoặc runtime profiles cho local/dev/cpu/gpu/kaggle
+    - Có thể là config templates, docs, hoặc launcher presets tương đương
+    - _Requirements: REQ-OPS-003_
+
+- [ ] 17. Xây dựng trainer/evaluator/cli/ — Full Orchestration, Sweep, Ablation
+  - [ ] 17.1 Triển khai `Trainer` trong `ugtsdti/trainer/trainer.py`
+    - `step(batch)`: dùng `PipelineExecutor` → loss → backward/update
+    - Freeze policy, KD schedule, precision/autocast, checkpoint hooks, logger hooks
+    - Teacher freeze/trainable state explicit; KD schedule hỗ trợ warmup và constant
+    - _Requirements: REQ-TRAIN-001_
+  - [ ] 17.2 Triển khai `Evaluator` trong `ugtsdti/trainer/evaluator.py`
+    - Dùng cùng `PipelineExecutor`; không backward
+    - Compute metrics/diagnostics; aggregate per-scenario
+    - Per-scenario metrics cho S1–S4; S4 được highlight như inductive indicator
+    - _Requirements: REQ-EVAL-001, REQ-POST-002_
+  - [ ] 17.3 Viết integration tests cho Trainer/Evaluator pipeline consistency
+    - Test train và eval dùng cùng stage order
+    - Test per-scenario metrics được tách biệt đúng
+    - Test trainer/evaluator không bypass decision stage
+    - _Requirements: REQ-ARCH-001, REQ-EVAL-001_
+  - [ ] 17.4 Triển khai CLI trong `ugtsdti/cli/main.py`
+    - Commands: `train`, `eval`, `validate`, `sweep`
+    - Dispatch path: load → validate → normalize → build runtime → execute command
+    - `validate` không init model weights hoặc external resources
+    - Print experiment identity khi bắt đầu run
+    - _Requirements: REQ-OPS-002_
+  - [ ] 17.5 Viết unit tests cho CLI
+    - Test `validate` với invalid config → fail fast với lỗi rõ ràng
+    - Test `validate` không gọi model init
+    - Test `sweep` resolve normalized parameter targets đúng
+    - _Requirements: REQ-OPS-002, REQ-CONF-003_
+  - [ ] 17.6 Tạo sample ablation/sweep configs và smoke-validate chúng
+    - Ablations tối thiểu: disable KD, disable uncertainty, disable teacher, đổi decision strategy
+    - Sweep targets tối thiểu: KD temperature, KD weight, uncertainty sample count, decision strategy, teacher freeze policy, student modality assignment
+    - _Requirements: REQ-ABL-001, REQ-CONF-003, REQ-OPS-002_
+
+- [ ] 18. Xây dựng artifacts và spec collateral/ — Reproducibility Bundle, Traceability, Performance Hardening
+  - [ ] 18.1 Triển khai artifact writer
+    - Tạo `artifacts/<run_id>/` với: `config.yaml`, `identity.json`, `metrics.json`, `diagnostics.json`, `split_manifest.json`, `model.pt`, `logs/`
+    - Nếu tracing bật: lưu execution trace và state boundary summaries
+    - _Requirements: REQ-REPRO-002, REQ-GRAPH-003_
+  - [ ] 18.2 Viết tests cho reproducibility bundle và performance/concurrency invariants
+    - Test artifact bundle chứa đủ metadata cần thiết
+    - Test reproducibility tuple ổn định dù `run_id` và `timestamp` khác nhau
+    - Test planner/executor không dựa vào shared mutable state và không deep-copy full State như default behavior
+    - _Requirements: REQ-REPRO-002, REQ-QUAL-004_
+  - [ ] 18.3 Đồng bộ spec collateral sau implementation
+    - Update `traceability.md` theo REQ IDs mới, design sections, tasks, và test coverage dự kiến
+    - Update configs mẫu để phản ánh identity decision module ở minimal baseline và soft blending ở full pipeline
+    - _Requirements: REQ-ABL-001, REQ-REPRO-002_
+
+- [ ] 19. Checkpoint 5 — Full UGTS pipeline hoạt động
+  - Chạy full pipeline: student + teacher + KD + uncertainty + `SoftBlendingDecisionModule`
+  - Verify 4-scenario evaluation (S1–S4) với per-scenario metrics
+  - Verify reproducibility bundle, execution trace, và state boundary summaries được lưu đầy đủ
+  - Verify ablation config và sweep config chạy được qua config thay vì sửa code
+  - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
+  - _Requirements: REQ-ARCH-001, REQ-ARCH-002, REQ-EVAL-001, REQ-ABL-001, REQ-REPRO-002_
+
+## Ghi Chú
+
+- Tasks đánh dấu `*` là optional hardening/property/docs tasks; core implementation, blocker tests, và checkpoint validations vẫn là required
+- Mỗi task tham chiếu REQ IDs cụ thể để traceability
+- Checkpoint tasks đảm bảo validation tăng dần theo từng mốc pipeline
+- Ưu tiên giữ fixed pipeline invariant và stable naming trước khi mở rộng feature research
+- Không có task nào yêu cầu deploy, chạy server, hoặc user acceptance testing
