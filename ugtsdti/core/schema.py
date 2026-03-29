@@ -200,7 +200,10 @@ class StateSchemaBuilder:
         # --- Graph outputs ------------------------------------------------
         graph_cfg = cfg.get("graph", {})
         nodes = graph_cfg.get("nodes", [])
-        for node in nodes:
+        node_iterable = nodes.values() if isinstance(nodes, dict) else nodes
+        for node in node_iterable:
+            if not isinstance(node, dict):
+                continue
             node_name = node.get("name", "")
             node_type = node.get("type_key", node.get("type", ""))
             output_attrs = node.get("output_attrs", [])
@@ -234,19 +237,18 @@ class StateSchemaBuilder:
 
         # --- Interaction outputs ------------------------------------------
         interaction_cfg = cfg.get("interaction", {})
-        modules = interaction_cfg.get("modules", [])
-        for mod in modules:
-            for out_key in mod.get("output_keys", []):
-                specs.append(
-                    StateSpec(
-                        key=out_key,
-                        stage="interaction",
-                        required=False,
-                        shape=None,
-                        dtype=None,
-                        semantic=f"Output from interaction module '{mod.get('name', '')}'.",
-                    )
+        interaction_outputs = _collect_interaction_output_keys(interaction_cfg)
+        for out_key in sorted(interaction_outputs):
+            specs.append(
+                StateSpec(
+                    key=out_key,
+                    stage="interaction",
+                    required=False,
+                    shape=None,
+                    dtype=None,
+                    semantic=f"Output from interaction stage key '{out_key}'.",
                 )
+            )
 
         # --- Decision outputs ---------------------------------------------
         specs.append(
@@ -260,7 +262,7 @@ class StateSchemaBuilder:
             )
         )
         decision_cfg = cfg.get("decision", {})
-        if decision_cfg.get("emit_gate_alpha", False):
+        if decision_cfg.get("emit_gate_alpha", False) or decision_cfg.get("strategy") in {"soft", "hard"}:
             specs.append(
                 StateSpec(
                     key="gate.alpha",
@@ -322,7 +324,10 @@ class StateSchemaBuilder:
         graph_cfg = cfg.get("graph", {})
         nodes = graph_cfg.get("nodes", [])
         needed_input_kinds: set[str] = set()
-        for node in nodes:
+        node_iterable = nodes.values() if isinstance(nodes, dict) else nodes
+        for node in node_iterable:
+            if not isinstance(node, dict):
+                continue
             for key in node.get("inputs", []):
                 if key in _CONDITIONAL_BATCH_KEYS:
                     needed_input_kinds.add(key)
@@ -338,3 +343,41 @@ class StateSchemaBuilder:
             required_common=list(_ALWAYS_REQUIRED_BATCH_KEYS),
             conditional_keys=conditional,
         )
+
+
+def _collect_interaction_output_keys(interaction_cfg: dict[str, Any]) -> set[str]:
+    outputs: set[str] = set()
+
+    for module in interaction_cfg.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        for out_key in module.get("output_keys", []):
+            outputs.add(str(out_key))
+
+    for module_name in interaction_cfg.get("order", []):
+        module_cfg = interaction_cfg.get(module_name, {})
+        if not isinstance(module_cfg, dict):
+            continue
+        params = module_cfg.get("params", {})
+        if isinstance(params, dict) and params.get("enabled", True) is False:
+            continue
+        for out_key in module_cfg.get("output_keys", []):
+            outputs.add(str(out_key))
+
+        module_type = str(module_cfg.get("type", module_cfg.get("type_key", "")))
+        if "kd" in module_type or module_name == "kd":
+            outputs.update({"interaction.kd.loss_component", "kd.teacher_target", "kd.student_target"})
+        if "uncertainty" in module_type or module_name == "uncertainty":
+            targets = params.get("targets", {}) if isinstance(params, dict) else {}
+            emit_teacher = not isinstance(targets, dict) or targets.get("teacher", True)
+            emit_student = not isinstance(targets, dict) or targets.get("student", True)
+            if emit_teacher:
+                outputs.add("teacher.var")
+            if emit_student:
+                outputs.add("student.var")
+        if "diagnostics" in module_type or module_name == "diagnostics":
+            outputs.add("interaction.disagreement")
+            if not isinstance(params, dict) or params.get("emit_calibration", True):
+                outputs.update({"diagnostics.teacher_confidence", "diagnostics.student_confidence"})
+
+    return outputs

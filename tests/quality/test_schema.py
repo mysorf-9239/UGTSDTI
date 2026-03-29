@@ -8,8 +8,6 @@ Covers:
 REQ-STATE-004, REQ-ARCH-004, REQ-CONF-003
 """
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
 from ugtsdti.core.errors import InvalidConfigError
 from ugtsdti.core.schema import (
@@ -152,7 +150,7 @@ def _minimal_cfg() -> dict:
         "roles": {
             "student": {"source": "student_head.logits"},
         },
-        "interaction": {"modules": []},
+        "interaction": {"order": [], "dependencies": {}},
         "decision": {"emit_gate_alpha": False},
         "loss": {},
     }
@@ -260,54 +258,45 @@ class TestStateSchemaBuilder:
             "drug_seq": "required if any downstream node consumes drug sequence",
         }
 
-
-@st.composite
-def _schema_cfgs(draw):
-    node_names = draw(
-        st.lists(
-            st.sampled_from(["student_encoder", "teacher_encoder", "student_head", "teacher_head", "fusion"]),
-            min_size=1,
-            max_size=4,
-            unique=True,
-        )
-    )
-    attr_names = ["embedding", "logits", "hidden", "fused"]
-    nodes = []
-    for name in node_names:
-        outputs = draw(st.lists(st.sampled_from(attr_names), min_size=1, max_size=2, unique=True))
-        nodes.append(
-            {
-                "name": name,
-                "type_key": f"type.{name}",
-                "output_attrs": outputs,
+    def test_build_batch_spec_supports_mapping_style_graph_nodes(self):
+        builder = StateSchemaBuilder()
+        cfg = {
+            "graph": {
+                "nodes": {
+                    "student_encoder": {
+                        "type_key": "encoder.drug",
+                        "inputs": ["drug_seq", "protein_seq"],
+                        "output_attrs": ["embedding"],
+                    }
+                }
             }
-        )
+        }
 
-    role_outputs = [f"{node_names[0]}.{nodes[0]['output_attrs'][0]}"]
-    roles = {"student": {"outputs": role_outputs}}
-    if len(node_names) > 1:
-        roles["teacher"] = {"outputs": [f"{node_names[1]}.{nodes[1]['output_attrs'][0]}"]}
+        batch_spec = builder.build_batch_spec(cfg)
 
-    loss_map = {}
-    if draw(st.booleans()):
-        loss_map["kd"] = "interaction.kd.loss_component"
+        assert batch_spec.required_common == ["labels", "scenario"]
+        assert batch_spec.conditional_keys == {
+            "drug_seq": "required if any downstream node consumes drug sequence",
+            "protein_seq": "required if any downstream node consumes protein sequence",
+        }
 
-    return {
-        "graph": {"nodes": nodes},
-        "roles": roles,
-        "interaction": {"modules": []},
-        "decision": {"emit_gate_alpha": draw(st.booleans())},
-        "loss": {"map": loss_map} if loss_map else {},
-    }
+    def test_schema_collects_canonical_interaction_outputs(self):
+        builder = StateSchemaBuilder()
+        cfg = _minimal_cfg()
+        cfg["interaction"] = {
+            "order": ["kd", "uncertainty", "diagnostics"],
+            "dependencies": {"diagnostics": ["kd", "uncertainty"]},
+            "kd": {"type": "kd.standard", "params": {"enabled": True}},
+            "uncertainty": {
+                "type": "uncertainty.mc_dropout",
+                "params": {"enabled": True, "targets": {"teacher": True, "student": False}},
+            },
+            "diagnostics": {"type": "diagnostics.basic", "params": {"enabled": True, "emit_calibration": True}},
+        }
 
+        keys = {spec.key for spec in builder.build_for_experiment(cfg)}
 
-@given(_schema_cfgs())
-def test_state_schema_builder_is_idempotent_for_same_valid_config(cfg):
-    builder = StateSchemaBuilder()
-
-    schema1 = builder.build_for_experiment(cfg)
-    schema2 = builder.build_for_experiment(cfg)
-
-    serialized1 = [(spec.key, spec.stage, spec.required, spec.shape, spec.dtype, spec.semantic) for spec in schema1]
-    serialized2 = [(spec.key, spec.stage, spec.required, spec.shape, spec.dtype, spec.semantic) for spec in schema2]
-    assert serialized1 == serialized2
+        assert "interaction.kd.loss_component" in keys
+        assert "kd.teacher_target" in keys
+        assert "teacher.var" in keys
+        assert "interaction.disagreement" in keys

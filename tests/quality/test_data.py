@@ -162,6 +162,47 @@ def test_loader_factory_reads_materialized_split(tmp_path):
     assert loaded_manifest.split_version == "split-v1"
 
 
+def test_loader_factory_can_select_multiple_scenarios(tmp_path):
+    s1_path = tmp_path / "s1.jsonl"
+    s2_path = tmp_path / "s2.jsonl"
+    s1_record = dict(_records()[0])
+    s2_record = dict(_records()[1])
+    s2_record["scenario"] = "s2"
+    s1_path.write_text(json.dumps(s1_record, sort_keys=True) + "\n", encoding="utf-8")
+    s2_path.write_text(json.dumps(s2_record, sort_keys=True) + "\n", encoding="utf-8")
+    dataset_version = DatasetVersion(
+        dataset="davis",
+        raw_version="davis",
+        preprocessing_version="prep-v1",
+        record_count=2,
+        feature_keys=["drug_seq", "protein_seq", "labels", "scenario"],
+    )
+    manifest = SplitManifest(
+        dataset="davis",
+        preprocessing_version="prep-v1",
+        split_version="split-v1",
+        seed=1,
+        scenarios=["s1", "s2"],
+        split_paths={"s1": str(s1_path), "s2": str(s2_path)},
+        counts={"s1": 1, "s2": 1},
+    )
+    dataset_path = tmp_path / "dataset_version.json"
+    manifest_path = tmp_path / "manifest.json"
+    dataset_path.write_text(json.dumps(dataset_version.to_dict()), encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest.to_dict()), encoding="utf-8")
+
+    batches, _, _, _ = DataLoaderFactory().build(
+        cfg=_cfg(),
+        dataset_version_path=dataset_path,
+        split_manifest_path=manifest_path,
+        batch_size=2,
+        scenarios=["s1", "s2"],
+    )
+
+    assert len(batches) == 1
+    assert batches[0]["scenario"] == ["s1", "s2"]
+
+
 def test_data_validator_missing_artifact_raises(tmp_path):
     with pytest.raises(MissingRawSnapshotError):
         DataValidator().validate_artifacts(

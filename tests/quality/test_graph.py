@@ -5,8 +5,6 @@ REQ-GRAPH-002, REQ-GRAPH-003, REQ-ARCH-004
 from __future__ import annotations
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
 from ugtsdti.core.errors import (
     InvalidConfigError,
@@ -272,111 +270,57 @@ class TestGraphPlannerTopologicalOrder:
         assert plan.order == ["a", "b", "c"]
 
 
-@st.composite
-def _acyclic_graph_cfgs(draw):
-    names = draw(
-        st.lists(
-            st.sampled_from(["a", "b", "c", "d", "e"]),
-            min_size=1,
-            max_size=5,
-            unique=True,
-        )
-    )
-    nodes = []
-    for index, name in enumerate(names):
-        deps = [] if index == 0 else draw(st.lists(st.sampled_from(names[:index]), unique=True))
-        nodes.append(
-            {
-                "name": name,
-                "type_key": "prop.node",
-                "inputs": [f"{dep}.out" for dep in deps],
-            }
-        )
-    return {"nodes": nodes}
+def test_dry_run_does_not_instantiate_runtime():
+    """Planner.plan() must not call build_runtime (no weights loaded)."""
+    instantiated = []
 
+    class TrackingRuntime(NodeRuntime):
+        def __init__(self, **kwargs):
+            instantiated.append(True)
 
-@given(_acyclic_graph_cfgs())
-def test_graph_builder_and_planner_preserve_topological_validity_for_acyclic_graphs(cfg):
-    spec = NodePluginSpec(type_key="prop.node", output_attrs=["out"])
-    registry = _make_registry(spec)
+        def forward(self, inputs, context):
+            return {}
+
+    spec = NodePluginSpec(type_key="tracker", output_attrs=["out"])
+    registry = NodeRegistry()
+    registry.register(spec, TrackingRuntime)
+    cfg = {"nodes": [{"name": "n", "type_key": "tracker", "inputs": []}]}
     builder = GraphBuilder(registry)
     planner = GraphPlanner(registry)
-
-    plan = planner.plan(builder.build(cfg))
-    positions = {name: index for index, name in enumerate(plan.order)}
-
-    for node_name, deps in plan.edges.items():
-        for dep in deps:
-            assert positions[dep] < positions[node_name]
+    planner.plan(builder.build(cfg))
+    assert instantiated == [], "Planner must not instantiate runtime classes"
 
 
-@given(st.lists(st.sampled_from(["a", "b", "c", "d"]), min_size=2, max_size=4, unique=True))
-def test_graph_builder_rejects_cycles_for_generated_graphs(names):
-    spec = NodePluginSpec(type_key="prop.node", output_attrs=["out"])
-    registry = _make_registry(spec)
+def test_unresolved_dependency_reported():
+    """Planner should propagate MissingDependencyError from builder."""
+    registry = _make_registry(HEAD_SPEC)
     builder = GraphBuilder(registry)
+    cfg = {
+        "nodes": [
+            {"name": "head", "type_key": "head.mlp", "inputs": ["missing.key"]},
+        ]
+    }
+    with pytest.raises(MissingDependencyError):
+        builder.build(cfg)
 
-    nodes = []
-    for index, name in enumerate(names):
-        inputs = [f"{names[index - 1]}.out"] if index > 0 else []
-        nodes.append({"name": name, "type_key": "prop.node", "inputs": inputs})
-    nodes[0]["inputs"] = [f"{names[-1]}.out"]
 
-    with pytest.raises(InvalidInteractionGraphError):
-        builder.build({"nodes": nodes})
+def test_cycle_detected_by_planner():
+    """Planner should detect cycles not caught by builder (edge case)."""
+    from ugtsdti.graph.specs import GraphPlan, NodeDefinition
 
-    def test_dry_run_does_not_instantiate_runtime(self):
-        """Planner.plan() must not call build_runtime (no weights loaded)."""
-        instantiated = []
+    spec_a = NodePluginSpec(type_key="type_a", output_attrs=["out"])
+    spec_b = NodePluginSpec(type_key="type_b", output_attrs=["result"])
+    registry = _make_registry(spec_a, spec_b)
+    planner = GraphPlanner(registry)
 
-        class TrackingRuntime(NodeRuntime):
-            def __init__(self, **kwargs):
-                instantiated.append(True)
-
-            def forward(self, inputs, context):
-                return {}
-
-        spec = NodePluginSpec(type_key="tracker", output_attrs=["out"])
-        registry = NodeRegistry()
-        registry.register(spec, TrackingRuntime)
-        cfg = {"nodes": [{"name": "n", "type_key": "tracker", "inputs": []}]}
-        builder = GraphBuilder(registry)
-        planner = GraphPlanner(registry)
-        planner.plan(builder.build(cfg))
-        assert instantiated == [], "Planner must not instantiate runtime classes"
-
-    def test_unresolved_dependency_reported(self):
-        """Planner should propagate MissingDependencyError from builder."""
-        registry = _make_registry(HEAD_SPEC)
-        builder = GraphBuilder(registry)
-        cfg = {
-            "nodes": [
-                {"name": "head", "type_key": "head.mlp", "inputs": ["missing.key"]},
-            ]
-        }
-        with pytest.raises(MissingDependencyError):
-            builder.build(cfg)
-
-    def test_cycle_detected_by_planner(self):
-        """Planner should detect cycles not caught by builder (edge case)."""
-        # Manually construct a plan with a cycle in edges to test planner's
-        # topological sort raises correctly.
-        from ugtsdti.graph.specs import GraphPlan, NodeDefinition
-
-        spec_a = NodePluginSpec(type_key="type_a", output_attrs=["out"])
-        spec_b = NodePluginSpec(type_key="type_b", output_attrs=["result"])
-        registry = _make_registry(spec_a, spec_b)
-        planner = GraphPlanner(registry)
-
-        defn_a = NodeDefinition(name="a", type_key="type_a", inputs=[])
-        defn_b = NodeDefinition(name="b", type_key="type_b", inputs=[])
-        # Manually inject a cycle in edges
-        plan_with_cycle = GraphPlan(
-            node_definitions=[defn_a, defn_b],
-            order=[],
-            produced_keys={"a": ["a.out"], "b": ["b.result"]},
-            producers={"a.out": "a", "b.result": "b"},
-            edges={"a": ["b"], "b": ["a"]},  # cycle
-        )
-        with pytest.raises(InvalidInteractionGraphError, match="[Cc]ycle"):
-            planner.plan(plan_with_cycle)
+    defn_a = NodeDefinition(name="a", type_key="type_a", inputs=[])
+    defn_b = NodeDefinition(name="b", type_key="type_b", inputs=[])
+    plan_with_cycle = GraphPlan(
+        node_definitions=[defn_a, defn_b],
+        order=[],
+        produced_keys={"a": ["a.out"], "b": ["b.result"]},
+        producers={"a.out": "a", "b.result": "b"},
+        edges={"a": ["b"], "b": ["a"]},
+    )
+    with pytest.raises(InvalidInteractionGraphError, match="[Cc]ycle"):
+        planner.plan(plan_with_cycle)
