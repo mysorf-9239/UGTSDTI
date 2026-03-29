@@ -116,15 +116,15 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - **Property 5: GraphBuilder với graph có cycle luôn raise lỗi**
     - **Validates: REQ-GRAPH-002**
 
-- [ ] 4. Xây dựng roles/ — Canonical Role Binding
-  - [ ] 4.1 Triển khai `RoleBinding` dataclass và `RoleBinder` trong `ugtsdti/roles/binder.py`
+- [x] 4. Xây dựng roles/ — Canonical Role Binding
+  - [x] 4.1 Triển khai `RoleBinding` dataclass và `RoleBinder` trong `ugtsdti/roles/binder.py`
     - `RoleBinding`: role, outputs, aggregation (first | mean)
     - `RoleBinder.bind(state, plan, context)` → commit `<role>.logits` vào `State`
     - Validate: graph outputs tồn tại, shape-compatible, resulting logits schema hợp lệ
     - Enforce canonical role naming `student.logits`, `teacher.logits`
     - Fail rõ ràng với `InvalidRoleBindingError`
     - _Requirements: REQ-ROLE-001, REQ-STATE-004, REQ-ARCH-004_
-  - [ ] 4.2 Viết unit tests cho RoleBinder validation
+  - [x] 4.2 Viết unit tests cho RoleBinder validation
     - Test missing graph output → `InvalidRoleBindingError`
     - Test shape incompatibility → `InvalidRoleBindingError`
     - Test invalid role key naming bị reject
