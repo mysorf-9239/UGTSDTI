@@ -41,7 +41,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test role/decision keys sai convention bị reject
     - Test `StateSchemaBuilder` với cùng normalized config luôn tạo schema tương đương
     - _Requirements: REQ-STATE-004, REQ-ARCH-004, REQ-CONF-003_
-  - [ ]* 1.7 Viết property test cho StateSchemaBuilder idempotency
+  - [x]* 1.7 Viết property test cho StateSchemaBuilder idempotency
     - **Property 1: build_for_experiment với cùng config luôn trả về schema tương đương**
     - **Validates: REQ-STATE-004, REQ-CONF-003**
 

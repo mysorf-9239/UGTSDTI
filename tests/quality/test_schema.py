@@ -8,6 +8,8 @@ Covers:
 REQ-STATE-004, REQ-ARCH-004, REQ-CONF-003
 """
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from ugtsdti.core.errors import InvalidConfigError
 from ugtsdti.core.schema import (
@@ -257,3 +259,55 @@ class TestStateSchemaBuilder:
         assert batch_spec.conditional_keys == {
             "drug_seq": "required if any downstream node consumes drug sequence",
         }
+
+
+@st.composite
+def _schema_cfgs(draw):
+    node_names = draw(
+        st.lists(
+            st.sampled_from(["student_encoder", "teacher_encoder", "student_head", "teacher_head", "fusion"]),
+            min_size=1,
+            max_size=4,
+            unique=True,
+        )
+    )
+    attr_names = ["embedding", "logits", "hidden", "fused"]
+    nodes = []
+    for name in node_names:
+        outputs = draw(st.lists(st.sampled_from(attr_names), min_size=1, max_size=2, unique=True))
+        nodes.append(
+            {
+                "name": name,
+                "type_key": f"type.{name}",
+                "output_attrs": outputs,
+            }
+        )
+
+    role_outputs = [f"{node_names[0]}.{nodes[0]['output_attrs'][0]}"]
+    roles = {"student": {"outputs": role_outputs}}
+    if len(node_names) > 1:
+        roles["teacher"] = {"outputs": [f"{node_names[1]}.{nodes[1]['output_attrs'][0]}"]}
+
+    loss_map = {}
+    if draw(st.booleans()):
+        loss_map["kd"] = "interaction.kd.loss_component"
+
+    return {
+        "graph": {"nodes": nodes},
+        "roles": roles,
+        "interaction": {"modules": []},
+        "decision": {"emit_gate_alpha": draw(st.booleans())},
+        "loss": {"map": loss_map} if loss_map else {},
+    }
+
+
+@given(_schema_cfgs())
+def test_state_schema_builder_is_idempotent_for_same_valid_config(cfg):
+    builder = StateSchemaBuilder()
+
+    schema1 = builder.build_for_experiment(cfg)
+    schema2 = builder.build_for_experiment(cfg)
+
+    serialized1 = [(spec.key, spec.stage, spec.required, spec.shape, spec.dtype, spec.semantic) for spec in schema1]
+    serialized2 = [(spec.key, spec.stage, spec.required, spec.shape, spec.dtype, spec.semantic) for spec in schema2]
+    assert serialized1 == serialized2
