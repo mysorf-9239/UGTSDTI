@@ -126,15 +126,19 @@ def _full_teacher_student_cfg() -> dict:
             "dependencies": {"kd": ["uncertainty"]},
             "uncertainty": {
                 "type": "uncertainty.mc_dropout",
-                "samples": 10,
-                "enabled": True,
-                "targets": {"teacher": True, "student": True},
+                "params": {
+                    "samples": 10,
+                    "enabled": True,
+                    "targets": {"teacher": True, "student": True},
+                },
             },
             "kd": {
                 "type": "kd.standard",
-                "temperature": 4.0,
-                "mode": "logits",
-                "enabled": True,
+                "params": {
+                    "temperature": 4.0,
+                    "mode": "logits",
+                    "enabled": True,
+                },
             },
         },
         "decision": {
@@ -256,6 +260,18 @@ class TestSchemaValidation:
         cfg["interaction"]["order"] = "not_a_list"
         assert_invalid(cfg, "order")
 
+    def test_interaction_runtime_fields_must_be_nested_under_params(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["interaction"] = {
+            "order": ["kd"],
+            "dependencies": {},
+            "kd": {
+                "type": "kd.standard",
+                "enabled": True,
+            },
+        }
+        assert_invalid(cfg, "params")
+
     def test_loss_map_not_dict_fails(self):
         cfg = _minimal_student_only_cfg()
         cfg["loss"]["map"] = "not_a_dict"
@@ -302,6 +318,8 @@ class TestInteractionAcyclic:
                 "a": ["b"],
                 "b": ["a"],
             },
+            "a": {"type": "noop", "params": {}},
+            "b": {"type": "noop", "params": {}},
         }
         assert_invalid(cfg, "cycle")
 
@@ -310,6 +328,7 @@ class TestInteractionAcyclic:
         cfg["interaction"] = {
             "order": ["a"],
             "dependencies": {"a": ["a"]},
+            "a": {"type": "noop", "params": {}},
         }
         assert_invalid(cfg)
 
@@ -322,6 +341,9 @@ class TestInteractionAcyclic:
                 "c": ["b"],
                 "a": ["c"],
             },
+            "a": {"type": "noop", "params": {}},
+            "b": {"type": "noop", "params": {}},
+            "c": {"type": "noop", "params": {}},
         }
         assert_invalid(cfg, "cycle")
 
@@ -330,6 +352,7 @@ class TestInteractionAcyclic:
         cfg["interaction"] = {
             "order": ["kd"],
             "dependencies": {"kd": ["uncertainty"]},  # uncertainty not in order
+            "kd": {"type": "kd.standard", "params": {}},
         }
         assert_invalid(cfg, "uncertainty")
 
@@ -338,6 +361,9 @@ class TestInteractionAcyclic:
         cfg["interaction"] = {
             "order": ["a", "b", "c"],
             "dependencies": {"b": ["a"], "c": ["b"]},
+            "a": {"type": "noop", "params": {}},
+            "b": {"type": "noop", "params": {}},
+            "c": {"type": "noop", "params": {}},
         }
         assert_valid(cfg)
 
@@ -448,9 +474,11 @@ class TestTeacherStudentAvailability:
             "dependencies": {},
             "kd": {
                 "type": "kd.standard",
-                "temperature": 4.0,
-                "mode": "logits",
-                "enabled": True,
+                "params": {
+                    "temperature": 4.0,
+                    "mode": "logits",
+                    "enabled": True,
+                },
             },
         }
         # Need to add teacher graph outputs for KD to not fail on other checks
@@ -615,7 +643,10 @@ class TestConfigNormalizerIdempotency:
         cfg["interaction"] = {
             "order": ["kd"],
             "dependencies": {},
-            "kd": {"type": "kd.standard", "temperature": 4.0, "mode": "logits", "enabled": True},
+            "kd": {
+                "type": "kd.standard",
+                "params": {"temperature": 4.0, "mode": "logits", "enabled": True},
+            },
         }
         cfg["roles"]["teacher"] = {"outputs": ["student_head.logits"], "aggregation": "first"}
         cfg["loss"]["map"] = {"kd": "interaction.kd.loss_component"}
@@ -624,6 +655,16 @@ class TestConfigNormalizerIdempotency:
         assert isinstance(norm.loss["map"]["kd"], dict)
         assert norm.loss["map"]["kd"]["from"] == "interaction.kd.loss_component"
         assert "weight" in norm.loss["map"]["kd"]
+
+    def test_normalize_interaction_ensures_params_block_exists(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["interaction"] = {
+            "order": ["noop"],
+            "dependencies": {},
+            "noop": {"type": "noop", "inputs": ["student.logits"]},
+        }
+        norm = normalizer.normalize(cfg)
+        assert isinstance(norm.interaction["noop"]["params"], dict)
 
     def test_normalize_does_not_move_plugins_between_stages(self):
         """Normalization MUST NOT move plugins between stages."""

@@ -262,9 +262,8 @@ class ConfigNormalizer:
         for mod_name in order:
             if mod_name in result and isinstance(result[mod_name], dict):
                 mod_cfg = result[mod_name]
-                # Ensure enabled flag
-                if "enabled" not in mod_cfg:
-                    mod_cfg["enabled"] = True
+                if not isinstance(mod_cfg.get("params"), dict):
+                    mod_cfg["params"] = {}
         return result
 
     def _normalize_decision(self, raw: Any) -> dict[str, Any]:

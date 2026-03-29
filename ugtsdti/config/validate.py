@@ -51,6 +51,8 @@ _INPUT_MODALITY_BY_KEY = {
     "protein_id": "identifier",
 }
 
+_INTERACTION_ALLOWED_KEYS = {"type", "type_key", "inputs", "params", "output_keys"}
+
 
 # ---------------------------------------------------------------------------
 # ConfigValidator
@@ -188,6 +190,36 @@ class ConfigValidator:
                 stage="config_validate",
                 key="interaction.dependencies",
             )
+        for mod_name in order:
+            mod_cfg = interaction.get(mod_name)
+            if not isinstance(mod_cfg, dict):
+                raise InvalidConfigError(
+                    f"Interaction module '{mod_name}' config must be a mapping.",
+                    stage="config_validate",
+                    key=f"interaction.{mod_name}",
+                )
+            extra_keys = set(mod_cfg) - _INTERACTION_ALLOWED_KEYS
+            if extra_keys:
+                raise InvalidConfigError(
+                    f"Interaction module '{mod_name}' has unsupported top-level fields {sorted(extra_keys)}. "
+                    "Runtime options must be nested under 'params'.",
+                    stage="config_validate",
+                    key=f"interaction.{mod_name}",
+                )
+            params = mod_cfg.get("params", {})
+            if not isinstance(params, dict):
+                raise InvalidConfigError(
+                    f"Interaction module '{mod_name}.params' must be a mapping.",
+                    stage="config_validate",
+                    key=f"interaction.{mod_name}.params",
+                )
+            type_key = str(mod_cfg.get("type", mod_cfg.get("type_key", "")))
+            if not type_key:
+                raise InvalidConfigError(
+                    f"Interaction module '{mod_name}' is missing a type key.",
+                    stage="config_validate",
+                    key=f"interaction.{mod_name}.type",
+                )
 
     def _check_decision_schema(self, cfg: dict[str, Any]) -> None:
         decision = cfg.get("decision", {})
@@ -592,10 +624,6 @@ class ConfigValidator:
 
 
 def _interaction_module_params(mod_cfg: dict[str, Any]) -> dict[str, Any]:
-    """Merge flat interaction fields with nested runtime params."""
-    params = dict(mod_cfg.get("params", {}))
-    for key, value in mod_cfg.items():
-        if key in {"type", "type_key", "inputs", "dependencies", "params", "output_keys"}:
-            continue
-        params.setdefault(key, value)
-    return params
+    """Return canonical nested runtime params for an interaction module."""
+    params = mod_cfg.get("params", {})
+    return dict(params) if isinstance(params, dict) else {}

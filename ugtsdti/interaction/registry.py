@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from ugtsdti.interaction.base import InteractionRuntime
 
 
+_INTERACTION_ALLOWED_KEYS = {"type", "type_key", "inputs", "params", "output_keys"}
+
+
 class InteractionRegistry:
     """Registry for interaction plugin specs and runtime classes."""
 
@@ -86,6 +89,15 @@ class InteractionPlanner:
             if not isinstance(module_cfg, dict):
                 raise InvalidInteractionGraphError(
                     f"Interaction module {name!r} config must be a mapping.",
+                    stage="interaction",
+                    component="InteractionPlanner",
+                    key=name,
+                )
+            extra_keys = set(module_cfg) - _INTERACTION_ALLOWED_KEYS
+            if extra_keys:
+                raise InvalidInteractionGraphError(
+                    f"Interaction module {name!r} has unsupported top-level fields {sorted(extra_keys)}. "
+                    "Runtime options must be nested under 'params'.",
                     stage="interaction",
                     component="InteractionPlanner",
                     key=name,
@@ -199,10 +211,6 @@ def _topological_sort(definitions: list[InteractionDefinition]) -> list[str]:
 
 
 def _resolve_module_params(module_cfg: dict[str, Any]) -> dict[str, Any]:
-    """Merge explicit `params` with flat runtime fields for compatibility."""
-    params = dict(module_cfg.get("params", {}))
-    for key, value in module_cfg.items():
-        if key in {"type", "type_key", "inputs", "dependencies", "params"}:
-            continue
-        params.setdefault(key, value)
-    return params
+    """Return canonical nested runtime params for an interaction module."""
+    params = module_cfg.get("params", {})
+    return dict(params) if isinstance(params, dict) else {}
