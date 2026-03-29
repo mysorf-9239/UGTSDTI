@@ -20,6 +20,7 @@ from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
 from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
 from ugtsdti.nodes.base import NodeRuntime
+from ugtsdti.runtime import ArtifactWriter, build_experiment_identity
 from ugtsdti.trainer import Evaluator, Trainer
 from ugtsdti.trainer.trainer import PipelineExecutor
 
@@ -199,10 +200,16 @@ def test_trainer_applies_kd_warmup_schedule():
     torch = pytest.importorskip("torch")
     LearnableHeadRuntime.scale = torch.nn.Parameter(torch.tensor([[0.2]], dtype=torch.float32))
     LearnableHeadRuntime.bias = torch.nn.Parameter(torch.tensor([[0.1]], dtype=torch.float32))
+    teacher_param = torch.nn.Parameter(torch.tensor([[1.0]], dtype=torch.float32))
+    student_param = torch.nn.Parameter(torch.tensor([[1.0]], dtype=torch.float32))
+    gate_param = torch.nn.Parameter(torch.tensor([[1.0]], dtype=torch.float32))
     cfg = _cfg()
     graph_registry, interaction_registry = _prepare(cfg)
     executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
-    trainer = Trainer(executor)
+    trainer = Trainer(
+        executor,
+        parameter_groups={"teacher": [teacher_param], "student": [student_param], "gate": [gate_param]},
+    )
     optimizer = torch.optim.SGD([LearnableHeadRuntime.scale, LearnableHeadRuntime.bias], lr=0.1)
 
     result = trainer.step(
@@ -215,6 +222,34 @@ def test_trainer_applies_kd_warmup_schedule():
 
     assert result.kd_weight == pytest.approx(0.2)
     assert result.freeze_policy == {"teacher": True, "student": False, "gate": True}
+    assert teacher_param.requires_grad is False
+    assert student_param.requires_grad is True
+    assert gate_param.requires_grad is True
+
+
+def test_evaluator_writes_artifact_bundle_when_configured(tmp_path):
+    cfg = _cfg()
+    graph_registry, interaction_registry = _prepare(cfg)
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+    artifact_writer = ArtifactWriter(tmp_path / "artifacts")
+    evaluator = Evaluator(executor, artifact_writer=artifact_writer)
+    identity = build_experiment_identity({"test": "eval"})
+
+    result = evaluator.evaluate(
+        [_batch()],
+        cfg,
+        ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
+        identity=identity,
+        normalized_config={"version": "1.0"},
+        split_manifest={"dataset": "davis", "split_version": "v1"},
+        model_state={"student": "ok"},
+    )
+
+    bundle_dir = tmp_path / "artifacts" / identity.run_id
+    assert result.highlighted_scenarios == ["s4"]
+    assert (bundle_dir / "metrics.json").exists()
+    assert (bundle_dir / "diagnostics.json").exists()
+    assert (bundle_dir / "execution_trace.json").exists()
 
 
 def test_sample_ablation_and_sweep_configs_smoke_validate():

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -51,10 +52,10 @@ class ArtifactWriter:
         return bundle_dir
 
     def _write_yaml(self, path: Path, payload: dict[str, Any]) -> None:
-        self._atomic_write(path, yaml.safe_dump(payload, sort_keys=True))
+        self._atomic_write(path, yaml.safe_dump(_serialize_payload(payload), sort_keys=True))
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
-        self._atomic_write(path, json.dumps(payload, sort_keys=True, indent=2))
+        self._atomic_write(path, json.dumps(_serialize_payload(payload), sort_keys=True, indent=2))
 
     def _write_model(self, path: Path, payload: dict[str, Any]) -> None:
         try:
@@ -82,3 +83,42 @@ class ArtifactWriter:
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(payload, encoding="utf-8")
         os.replace(tmp, path)
+
+
+def _serialize_payload(value: Any) -> Any:
+    """Convert common runtime objects into JSON/YAML-safe data."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return _serialize_payload(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _serialize_payload(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_serialize_payload(item) for item in value]
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        return _serialize_payload(value.to_dict())
+
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            tensor = value.detach().cpu()
+            if tensor.numel() == 1:
+                return float(tensor.item())
+            return tensor.tolist()
+    except ImportError:
+        pass
+
+    try:
+        import numpy as np
+
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, np.generic):
+            return value.item()
+    except ImportError:
+        pass
+
+    return str(value)

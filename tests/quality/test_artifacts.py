@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.state import State, StateWriter
 from ugtsdti.graph.engine import GraphEngine
@@ -64,6 +66,29 @@ def test_artifact_bundle_contains_reproducibility_metadata(tmp_path):
     assert expected.issubset({path.name for path in bundle_dir.iterdir()})
     assert json.loads((bundle_dir / "identity.json").read_text(encoding="utf-8"))["run_id"] == identity.run_id
     assert (bundle_dir / "logs" / "events.txt").read_text(encoding="utf-8") == "ok"
+
+
+def test_artifact_writer_serializes_tensors_and_paths(tmp_path):
+    torch = pytest.importorskip("torch")
+    identity = build_experiment_identity({"model": "baseline"})
+    bundle_dir = ArtifactWriter(tmp_path / "artifacts").write_bundle(
+        identity=identity.to_dict(),
+        config={"weights_path": tmp_path / "weights.bin"},
+        metrics={"metrics.auroc": torch.tensor(0.8)},
+        diagnostics={"diagnostics.gate_alpha": torch.tensor([0.1, 0.9])},
+        split_manifest={"dataset": "davis"},
+        model_state={"weight": [1]},
+        execution_trace={"nodes": torch.tensor([[1.0, 2.0]])},
+        state_boundary_summaries={"decision": [tmp_path / "artifact.txt"]},
+    )
+
+    metrics_payload = json.loads((bundle_dir / "metrics.json").read_text(encoding="utf-8"))
+    diagnostics_payload = json.loads((bundle_dir / "diagnostics.json").read_text(encoding="utf-8"))
+    config_text = (bundle_dir / "config.yaml").read_text(encoding="utf-8")
+
+    assert metrics_payload["metrics.auroc"] == pytest.approx(0.8)
+    assert diagnostics_payload["diagnostics.gate_alpha"] == pytest.approx([0.1, 0.9])
+    assert "weights.bin" in config_text
 
 
 def test_reproducibility_key_stays_stable_while_run_identity_changes():

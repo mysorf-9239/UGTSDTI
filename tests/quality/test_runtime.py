@@ -43,10 +43,22 @@ def test_experiment_identity_separates_run_id_from_config_hash():
 
 
 def test_runtime_adapter_resolves_operational_knobs():
-    adapted = RuntimeAdapter().adapt({"runtime": {"device": "cpu", "seed": 3, "artifacts_dir": "artifacts/test"}})
+    adapted = RuntimeAdapter().adapt(
+        {
+            "runtime": {
+                "device": "cpu",
+                "seed": 3,
+                "artifacts_dir": "artifacts/test",
+                "pin_memory": True,
+                "data_dir": "data/input",
+            }
+        }
+    )
     assert adapted["device"] == "cpu"
     assert adapted["seed"] == 3
     assert adapted["artifacts_dir"].endswith("artifacts/test")
+    assert adapted["pin_memory"] is True
+    assert adapted["data_dir"].endswith("data/input")
 
 
 def test_checkpoint_corrupt_bundle_raises(tmp_path):

@@ -17,8 +17,10 @@ class RuntimeAdapter:
             "precision": runtime.get("precision", "fp32"),
             "num_workers": int(runtime.get("num_workers", 0)),
             "batch_size": int(runtime.get("batch_size", 32)),
+            "pin_memory": bool(runtime.get("pin_memory", False)),
             "artifacts_dir": str(Path(runtime.get("artifacts_dir", "artifacts")).resolve()),
             "checkpoint_dir": str(Path(runtime.get("checkpoint_dir", "checkpoints")).resolve()),
+            "data_dir": str(Path(runtime.get("data_dir", "data")).resolve()),
             "debug": bool(runtime.get("debug", False)),
         }
         return adapted

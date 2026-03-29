@@ -75,8 +75,14 @@ def run_cli(
             stream.write(json.dumps({"targets": targets}, sort_keys=True) + "\n")
 
         handler = command_handlers.get(args.command)
-        if handler is not None:
-            handler(normalized_cfg, args)
+        if handler is None:
+            raise UGTSDTIError(
+                f"No execution handler is configured for command {args.command!r}.",
+                stage="cli",
+                component="main",
+                key=args.command,
+            )
+        handler(normalized_cfg, args)
         return 0
     except UGTSDTIError as exc:
         stream.write(f"ERROR: {exc}\n")

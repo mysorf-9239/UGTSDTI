@@ -87,12 +87,29 @@ def test_cli_sweep_resolves_normalized_parameter_targets(tmp_path):
     config_path = tmp_path / "sweep.yaml"
     config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     buffer = io.StringIO()
+    called: list[str] = []
 
-    exit_code = run_cli(["sweep", str(config_path)], stdout=buffer)
+    exit_code = run_cli(
+        ["sweep", str(config_path)],
+        stdout=buffer,
+        handlers={"sweep": lambda cfg, args: called.append(args.command)},
+    )
 
     assert exit_code == 0
     assert resolve_sweep_targets(ConfigNormalizer().normalize(ConfigLoader().load(config_path)).to_dict()) == [
         "decision.strategy",
         "loss.map.kd.weight",
     ]
+    assert called == ["sweep"]
     assert "run_id=" in buffer.getvalue()
+
+
+def test_cli_train_without_handler_fails_closed(tmp_path):
+    config_path = tmp_path / "train.yaml"
+    config_path.write_text(yaml.safe_dump(_valid_cfg()), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["train", str(config_path)], stdout=buffer)
+
+    assert exit_code == 1
+    assert "No execution handler is configured" in buffer.getvalue()

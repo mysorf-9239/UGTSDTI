@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
@@ -23,7 +23,9 @@ from ugtsdti.logging.base import Logger
 from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.postprocess.metrics import MetricsReporter
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
+from ugtsdti.runtime.artifacts import ArtifactWriter
 from ugtsdti.runtime.checkpoint import CheckpointBundle, CheckpointIO
+from ugtsdti.runtime.identity import ExperimentIdentity
 
 
 @dataclass
@@ -219,10 +221,14 @@ class Trainer:
         *,
         logger: Logger | None = None,
         checkpoint_io: CheckpointIO | None = None,
+        artifact_writer: ArtifactWriter | None = None,
+        parameter_groups: dict[str, list[Any]] | None = None,
     ) -> None:
         self._pipeline_executor = pipeline_executor
         self._logger = logger
         self._checkpoint_io = checkpoint_io
+        self._artifact_writer = artifact_writer
+        self._parameter_groups = dict(parameter_groups or {})
 
     def step(
         self,
@@ -236,9 +242,14 @@ class Trainer:
         epoch: int = 0,
         checkpoint_path: str | None = None,
         checkpoint_bundle: CheckpointBundle | None = None,
+        identity: ExperimentIdentity | dict[str, Any] | None = None,
+        normalized_config: dict[str, Any] | None = None,
+        split_manifest: dict[str, Any] | None = None,
+        logs_dir: str | None = None,
     ) -> TrainStepResult:
         scheduled_cfg = self._apply_kd_schedule(cfg, step_idx)
         freeze_policy = _resolve_freeze_policy(scheduled_cfg)
+        _apply_freeze_policy(self._parameter_groups, freeze_policy)
 
         if optimizer is not None:
             _zero_grad(optimizer)
@@ -264,6 +275,18 @@ class Trainer:
 
         if self._checkpoint_io is not None and checkpoint_path and checkpoint_bundle is not None:
             self._checkpoint_io.save(checkpoint_bundle, checkpoint_path)
+        if self._artifact_writer is not None and identity is not None and normalized_config is not None:
+            self._artifact_writer.write_bundle(
+                identity=_identity_dict(identity),
+                config=normalized_config,
+                metrics={key: value for key, value in state.snapshot().items() if key.startswith("metrics.")},
+                diagnostics={key: value for key, value in state.snapshot().items() if key.startswith("diagnostics.")},
+                split_manifest=split_manifest or {},
+                model_state={"trainer.step": step_idx, "trainer.epoch": epoch},
+                execution_trace=asdict(trace),
+                state_boundary_summaries=trace.state_boundary_summaries,
+                logs_dir=logs_dir,
+            )
 
         return TrainStepResult(
             state=state,
@@ -323,6 +346,18 @@ def _read_kd_weight(cfg: dict[str, Any]) -> float | None:
     return float(mapping.get("weight", 1.0))
 
 
+def _apply_freeze_policy(parameter_groups: dict[str, list[Any]], freeze_policy: dict[str, bool]) -> None:
+    for parameter in parameter_groups.get("teacher", []):
+        if hasattr(parameter, "requires_grad"):
+            parameter.requires_grad = not freeze_policy["teacher"]
+    for parameter in parameter_groups.get("student", []):
+        if hasattr(parameter, "requires_grad"):
+            parameter.requires_grad = not freeze_policy["student"]
+    for parameter in parameter_groups.get("gate", []):
+        if hasattr(parameter, "requires_grad"):
+            parameter.requires_grad = freeze_policy["gate"]
+
+
 def _zero_grad(optimizer: Any) -> None:
     zero_grad = getattr(optimizer, "zero_grad", None)
     if callable(zero_grad):
@@ -370,3 +405,9 @@ def _to_scalar(value: Any) -> float | None:
     except ImportError:
         return None
     return None
+
+
+def _identity_dict(identity: ExperimentIdentity | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(identity, ExperimentIdentity):
+        return identity.to_dict()
+    return dict(identity)
