@@ -8,7 +8,14 @@ from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import BatchSchemaError, InvalidConfigError
 from ugtsdti.core.schema import StateSchemaBuilder
 from ugtsdti.core.state import State, StateWriter
-from ugtsdti.decision.module import IdentityDecisionModule
+from ugtsdti.decision.base import DecisionModule
+from ugtsdti.decision.module import (
+    HardSelectionDecisionModule,
+    IdentityDecisionModule,
+    SoftBlendingDecisionModule,
+)
+from ugtsdti.decision.policy import DecisionPolicy
+from ugtsdti.decision.trust import TrustEstimator
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
 from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
@@ -147,15 +154,36 @@ class PipelineExecutor:
             if outputs:
                 writer.commit(f"interaction.{name}", outputs)
 
-    def _build_decision_module(self, cfg: dict[str, Any]) -> IdentityDecisionModule:
+    def _build_decision_module(self, cfg: dict[str, Any]) -> DecisionModule:
         decision_cfg = cfg.get("decision", {})
         decision_type = decision_cfg.get("type", "identity")
-        if decision_type != "identity":
-            raise InvalidConfigError(
-                f"Minimal PipelineExecutor only supports identity decision, got {decision_type!r}.",
-                stage="decision",
-                component="PipelineExecutor",
-                key="decision.type",
+        strategy = decision_cfg.get("strategy", "identity")
+        fallback = dict(decision_cfg.get("fallback", {}))
+
+        if decision_type == "identity" or strategy == "identity":
+            source_key = decision_cfg.get("source_key", "student.logits")
+            return IdentityDecisionModule(source_key=source_key)
+
+        trust_estimator = TrustEstimator(use_uncertainty=bool(decision_cfg.get("use_uncertainty", False)))
+        policy = DecisionPolicy()
+
+        if strategy == "soft":
+            return SoftBlendingDecisionModule(
+                trust_estimator=trust_estimator,
+                policy=policy,
+                fallback=fallback,
             )
-        source_key = decision_cfg.get("source_key", "student.logits")
-        return IdentityDecisionModule(source_key=source_key)
+        if strategy == "hard":
+            return HardSelectionDecisionModule(
+                threshold=float(decision_cfg.get("threshold", 0.5)),
+                trust_estimator=trust_estimator,
+                policy=policy,
+                fallback=fallback,
+            )
+
+        raise InvalidConfigError(
+            f"Unsupported decision strategy {strategy!r} for decision type {decision_type!r}.",
+            stage="decision",
+            component="PipelineExecutor",
+            key="decision.strategy",
+        )

@@ -12,6 +12,7 @@ from ugtsdti.interaction.base import InteractionPluginSpec
 from ugtsdti.interaction.kd import KDInteraction, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
+from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
 from ugtsdti.nodes.base import NodeRuntime
 from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.trainer.trainer import PipelineExecutor
@@ -69,6 +70,10 @@ def _make_registries():
     interaction_registry.register(
         InteractionPluginSpec(type_key="kd.standard", output_keys_fn=kd_output_keys),
         KDInteraction,
+    )
+    interaction_registry.register(
+        InteractionPluginSpec(type_key="uncertainty.mc_dropout", output_keys_fn=uncertainty_output_keys),
+        UncertaintyInteraction,
     )
     return graph_registry, interaction_registry
 
@@ -168,6 +173,29 @@ def _student_only_disabled_kd_cfg():
             "inputs": ["student.logits"],
             "params": {"mode": "logits", "enabled": False},
         },
+    }
+    return cfg
+
+
+def _teacher_student_uncertainty_cfg():
+    cfg = _teacher_student_cfg()
+    cfg["interaction"] = {
+        "order": ["uncertainty"],
+        "dependencies": {},
+        "uncertainty": {
+            "type": "uncertainty.mc_dropout",
+            "inputs": ["teacher.logits", "student.logits"],
+            "params": {
+                "enabled": True,
+                "targets": {"teacher": True, "student": True},
+            },
+        },
+    }
+    cfg["decision"] = {
+        "type": "gate.uncertainty",
+        "strategy": "soft",
+        "use_uncertainty": True,
+        "fallback": {"no_teacher": "student", "no_student": "teacher"},
     }
     return cfg
 
@@ -322,4 +350,42 @@ def test_disabled_kd_pipeline_uses_explicit_noop_path_without_hidden_outputs():
     assert not state.has("interaction.kd.loss_component")
     assert state.has("loss.total")
     assert state.has("loss.hard")
+    assert trace.stage_order[-1] == "postprocess"
+
+
+def test_uncertainty_driven_decision_pipeline_emits_gate_outputs():
+    torch = pytest.importorskip("torch")
+    graph_registry, interaction_registry = _make_registries()
+    cfg = _teacher_student_uncertainty_cfg()
+    cfg["graph_plan"] = GraphPlanner(graph_registry).plan(GraphBuilder(graph_registry).build(cfg["graph"]))
+    cfg["interaction_plan"] = InteractionPlanner(interaction_registry).plan(
+        cfg["interaction"],
+        available_inputs={"student.logits", "teacher.logits"},
+    )
+
+    batch = {
+        "labels": torch.tensor([[1.0], [0.0]]),
+        "scenario": ["s1", "s1"],
+        "drug_seq": torch.tensor([[1.0, 0.0], [0.5, 0.5]]),
+        "protein_seq": torch.tensor([[0.0, 1.0], [0.2, 0.8]]),
+        "drug_graph": torch.tensor([[0.3, 0.7], [0.1, 0.9]]),
+    }
+    executor = PipelineExecutor(
+        graph_registry=graph_registry,
+        interaction_registry=interaction_registry,
+        debug=True,
+    )
+    state, trace = executor.run_batch(
+        batch,
+        cfg,
+        ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+    )
+
+    assert state.has("teacher.var")
+    assert state.has("student.var")
+    assert state.has("gate.alpha")
+    assert state.has("logits")
+    assert torch.all(torch.isfinite(state.get("teacher.var")))
+    assert torch.all(torch.isfinite(state.get("student.var")))
+    assert torch.all((state.get("gate.alpha") >= 0.0) & (state.get("gate.alpha") <= 1.0))
     assert trace.stage_order[-1] == "postprocess"

@@ -286,7 +286,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test diagnostics outputs đúng namespace
     - _Requirements: REQ-POST-002, REQ-EVAL-001, REQ-ARCH-004_
 
-- [ ] 14. Checkpoint 4 — Uncertainty + trust-aware decision hoạt động
+- [x] 14. Checkpoint 4 — Uncertainty + trust-aware decision hoạt động
   - Wire uncertainty module vào interaction stage và advanced decision modules
   - Verify `teacher.var` và `student.var` được emit và finite/non-negative
   - Verify decision module có thể consume uncertainty outputs
