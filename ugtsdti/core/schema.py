@@ -323,13 +323,16 @@ class StateSchemaBuilder:
         nodes = graph_cfg.get("nodes", [])
         needed_input_kinds: set[str] = set()
         for node in nodes:
+            for key in node.get("inputs", []):
+                if key in _CONDITIONAL_BATCH_KEYS:
+                    needed_input_kinds.add(key)
             for kind in node.get("input_kinds", []):
-                needed_input_kinds.add(kind)
+                if kind in _CONDITIONAL_BATCH_KEYS:
+                    needed_input_kinds.add(kind)
 
         conditional: dict[str, str] = {}
-        for key, condition in _CONDITIONAL_BATCH_KEYS.items():
-            # Include the key as conditional regardless; activation is runtime
-            conditional[key] = condition
+        for key in sorted(needed_input_kinds):
+            conditional[key] = _CONDITIONAL_BATCH_KEYS[key]
 
         return BatchSpec(
             required_common=list(_ALWAYS_REQUIRED_BATCH_KEYS),

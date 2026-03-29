@@ -233,4 +233,27 @@ class TestStateSchemaBuilder:
         builder = StateSchemaBuilder()
         batch_spec = builder.build_batch_spec(_minimal_cfg())
         assert "drug_seq" in batch_spec.conditional_keys
-        assert "protein_seq" in batch_spec.conditional_keys
+        assert "protein_seq" not in batch_spec.conditional_keys
+
+    def test_build_batch_spec_only_includes_selected_conditional_keys(self):
+        builder = StateSchemaBuilder()
+        cfg = _minimal_cfg()
+        cfg["graph"]["nodes"] = [
+            {
+                "name": "drug_encoder",
+                "type_key": "encoder.drug",
+                "inputs": ["drug_seq"],
+                "output_attrs": ["embedding"],
+            },
+            {
+                "name": "head",
+                "type_key": "head.mlp",
+                "inputs": ["drug_encoder.embedding"],
+                "output_attrs": ["logits"],
+            },
+        ]
+        batch_spec = builder.build_batch_spec(cfg)
+        assert batch_spec.required_common == ["labels", "scenario"]
+        assert batch_spec.conditional_keys == {
+            "drug_seq": "required if any downstream node consumes drug sequence",
+        }

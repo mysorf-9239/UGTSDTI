@@ -54,6 +54,14 @@ class TestWriteOnce:
         with pytest.raises(KeyError):
             state.get("nonexistent")
 
+    def test_failed_multi_key_commit_is_atomic(self):
+        state, writer = make_state_and_writer()
+        writer.commit("producer_a", {"existing": 1})
+        with pytest.raises(KeyCollisionError):
+            writer.commit("producer_b", {"new_key": 2, "existing": 3})
+        assert state.keys() == ["existing"]
+        assert not state.has("new_key")
+
 
 # ---------------------------------------------------------------------------
 # Single-producer invariant

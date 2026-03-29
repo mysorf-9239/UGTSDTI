@@ -79,7 +79,9 @@ class StateWriter:
         Raises:
             KeyCollisionError: If any key in *outputs* already exists in State.
         """
-        for key, value in outputs.items():
+        # Validate the whole batch first so commit is atomic: a failed write
+        # must not leave partial outputs in State.
+        for key in outputs:
             if self._state.has(key):
                 existing_producer = self._producers.get(key, "<unknown>")
                 raise KeyCollisionError(
@@ -89,5 +91,7 @@ class StateWriter:
                     component=producer,
                     key=key,
                 )
+
+        for key, value in outputs.items():
             self._state._store[key] = value
             self._producers[key] = producer
