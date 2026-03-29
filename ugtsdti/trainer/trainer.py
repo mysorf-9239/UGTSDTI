@@ -1,6 +1,8 @@
-"""Shared pipeline executor for train/eval flows."""
+"""Pipeline execution and training orchestration."""
 from __future__ import annotations
 
+import copy
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,9 +19,11 @@ from ugtsdti.decision.module import (
 from ugtsdti.decision.policy import DecisionPolicy
 from ugtsdti.decision.trust import TrustEstimator
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
+from ugtsdti.logging.base import Logger
 from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.postprocess.metrics import MetricsReporter
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
+from ugtsdti.runtime.checkpoint import CheckpointBundle, CheckpointIO
 
 
 @dataclass
@@ -29,6 +33,18 @@ class PipelineTrace:
     stage_order: list[str] = field(default_factory=list)
     graph_trace: GraphTrace | None = None
     state_boundary_summaries: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass
+class TrainStepResult:
+    """Structured result of a single training step."""
+
+    state: State
+    trace: PipelineTrace
+    loss: Any
+    logged_metrics: dict[str, float]
+    freeze_policy: dict[str, bool]
+    kd_weight: float | None = None
 
 
 class PipelineExecutor:
@@ -192,3 +208,165 @@ class PipelineExecutor:
             component="PipelineExecutor",
             key="decision.strategy",
         )
+
+
+class Trainer:
+    """Training orchestration on top of the shared pipeline executor."""
+
+    def __init__(
+        self,
+        pipeline_executor: PipelineExecutor,
+        *,
+        logger: Logger | None = None,
+        checkpoint_io: CheckpointIO | None = None,
+    ) -> None:
+        self._pipeline_executor = pipeline_executor
+        self._logger = logger
+        self._checkpoint_io = checkpoint_io
+
+    def step(
+        self,
+        batch: dict[str, Any],
+        cfg: dict[str, Any],
+        context: ExecutionContext,
+        *,
+        optimizer: Any | None = None,
+        scheduler: Any | None = None,
+        step_idx: int = 0,
+        epoch: int = 0,
+        checkpoint_path: str | None = None,
+        checkpoint_bundle: CheckpointBundle | None = None,
+    ) -> TrainStepResult:
+        scheduled_cfg = self._apply_kd_schedule(cfg, step_idx)
+        freeze_policy = _resolve_freeze_policy(scheduled_cfg)
+
+        if optimizer is not None:
+            _zero_grad(optimizer)
+
+        with _autocast_context(context):
+            state, trace = self._pipeline_executor.run_batch(batch, scheduled_cfg, context)
+            loss = state.get("loss.total")
+
+        if optimizer is not None and _requires_grad(loss):
+            loss.backward()
+            optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
+
+        logged_metrics = _collect_scalar_metrics(state)
+        logged_metrics["trainer.epoch"] = float(epoch)
+        logged_metrics["trainer.step"] = float(step_idx)
+        logged_metrics["trainer.teacher_frozen"] = 1.0 if freeze_policy["teacher"] else 0.0
+        logged_metrics["trainer.student_frozen"] = 1.0 if freeze_policy["student"] else 0.0
+        logged_metrics["trainer.gate_trainable"] = 1.0 if freeze_policy["gate"] else 0.0
+        if self._logger is not None:
+            self._logger.log_metrics(logged_metrics, step=step_idx)
+
+        if self._checkpoint_io is not None and checkpoint_path and checkpoint_bundle is not None:
+            self._checkpoint_io.save(checkpoint_bundle, checkpoint_path)
+
+        return TrainStepResult(
+            state=state,
+            trace=trace,
+            loss=loss,
+            logged_metrics=logged_metrics,
+            freeze_policy=freeze_policy,
+            kd_weight=_read_kd_weight(scheduled_cfg),
+        )
+
+    def _apply_kd_schedule(self, cfg: dict[str, Any], step_idx: int) -> dict[str, Any]:
+        scheduled_cfg = copy.deepcopy(cfg)
+        weight = _scheduled_kd_weight(scheduled_cfg, step_idx)
+        if weight is None:
+            return scheduled_cfg
+        scheduled_cfg.setdefault("loss", {}).setdefault("map", {}).setdefault("kd", {})["weight"] = weight
+        return scheduled_cfg
+
+
+def _resolve_freeze_policy(cfg: dict[str, Any]) -> dict[str, bool]:
+    training_cfg = cfg.get("training", {})
+    teacher_cfg = training_cfg.get("teacher", {})
+    student_cfg = training_cfg.get("student", {})
+    gate_cfg = training_cfg.get("gate", {})
+    return {
+        "teacher": bool(teacher_cfg.get("freeze", True)),
+        "student": bool(student_cfg.get("freeze", False)),
+        "gate": bool(gate_cfg.get("trainable", False)),
+    }
+
+
+def _scheduled_kd_weight(cfg: dict[str, Any], step_idx: int) -> float | None:
+    kd_cfg = cfg.get("training", {}).get("kd", {})
+    schedule = str(kd_cfg.get("schedule", "constant")).lower()
+    mapping = cfg.get("loss", {}).get("map", {}).get("kd")
+    if not isinstance(mapping, dict):
+        return None
+    target_weight = float(mapping.get("weight", 1.0))
+    if schedule == "constant":
+        return target_weight
+    if schedule == "warmup":
+        warmup_steps = max(1, int(kd_cfg.get("warmup_steps", 1)))
+        progress = min(1.0, float(step_idx + 1) / float(warmup_steps))
+        return target_weight * progress
+    raise InvalidConfigError(
+        f"Unsupported KD schedule {schedule!r}.",
+        stage="train",
+        component="Trainer",
+        key="training.kd.schedule",
+    )
+
+
+def _read_kd_weight(cfg: dict[str, Any]) -> float | None:
+    mapping = cfg.get("loss", {}).get("map", {}).get("kd")
+    if not isinstance(mapping, dict):
+        return None
+    return float(mapping.get("weight", 1.0))
+
+
+def _zero_grad(optimizer: Any) -> None:
+    zero_grad = getattr(optimizer, "zero_grad", None)
+    if callable(zero_grad):
+        zero_grad(set_to_none=True)
+
+
+def _requires_grad(value: Any) -> bool:
+    return bool(getattr(value, "requires_grad", False))
+
+
+def _autocast_context(context: ExecutionContext) -> Any:
+    if context.precision != "mixed":
+        return nullcontext()
+    try:
+        import torch
+    except ImportError:
+        return nullcontext()
+    device_type = context.device.split(":", 1)[0]
+    if device_type not in {"cpu", "cuda"}:
+        return nullcontext()
+    return torch.autocast(device_type=device_type, enabled=True)
+
+
+def _collect_scalar_metrics(state: State) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for key, value in state.snapshot().items():
+        if not (key.startswith("loss.") or key.startswith("metrics.") or key.startswith("diagnostics.")):
+            continue
+        scalar = _to_scalar(value)
+        if scalar is not None:
+            metrics[key] = scalar
+    return metrics
+
+
+def _to_scalar(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 1:
+                return float(value.detach().cpu().item())
+            return float(value.detach().to(dtype=torch.float32).mean().cpu().item())
+    except ImportError:
+        return None
+    return None

@@ -362,34 +362,34 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Có thể là config templates, docs, hoặc launcher presets tương đương
     - _Requirements: REQ-OPS-003_
 
-- [ ] 17. Xây dựng trainer/evaluator/cli/ — Full Orchestration, Sweep, Ablation
-  - [ ] 17.1 Triển khai `Trainer` trong `ugtsdti/trainer/trainer.py`
+- [x] 17. Xây dựng trainer/evaluator/cli/ — Full Orchestration, Sweep, Ablation
+  - [x] 17.1 Triển khai `Trainer` trong `ugtsdti/trainer/trainer.py`
     - `step(batch)`: dùng `PipelineExecutor` → loss → backward/update
     - Freeze policy, KD schedule, precision/autocast, checkpoint hooks, logger hooks
     - Teacher freeze/trainable state explicit; KD schedule hỗ trợ warmup và constant
     - _Requirements: REQ-TRAIN-001_
-  - [ ] 17.2 Triển khai `Evaluator` trong `ugtsdti/trainer/evaluator.py`
+  - [x] 17.2 Triển khai `Evaluator` trong `ugtsdti/trainer/evaluator.py`
     - Dùng cùng `PipelineExecutor`; không backward
     - Compute metrics/diagnostics; aggregate per-scenario
     - Per-scenario metrics cho S1–S4; S4 được highlight như inductive indicator
     - _Requirements: REQ-EVAL-001, REQ-POST-002_
-  - [ ] 17.3 Viết integration tests cho Trainer/Evaluator pipeline consistency
+  - [x] 17.3 Viết integration tests cho Trainer/Evaluator pipeline consistency
     - Test train và eval dùng cùng stage order
     - Test per-scenario metrics được tách biệt đúng
     - Test trainer/evaluator không bypass decision stage
     - _Requirements: REQ-ARCH-001, REQ-EVAL-001_
-  - [ ] 17.4 Triển khai CLI trong `ugtsdti/cli/main.py`
+  - [x] 17.4 Triển khai CLI trong `ugtsdti/cli/main.py`
     - Commands: `train`, `eval`, `validate`, `sweep`
     - Dispatch path: load → validate → normalize → build runtime → execute command
     - `validate` không init model weights hoặc external resources
     - Print experiment identity khi bắt đầu run
     - _Requirements: REQ-OPS-002_
-  - [ ] 17.5 Viết unit tests cho CLI
+  - [x] 17.5 Viết unit tests cho CLI
     - Test `validate` với invalid config → fail fast với lỗi rõ ràng
     - Test `validate` không gọi model init
     - Test `sweep` resolve normalized parameter targets đúng
     - _Requirements: REQ-OPS-002, REQ-CONF-003_
-  - [ ] 17.6 Tạo sample ablation/sweep configs và smoke-validate chúng
+  - [x] 17.6 Tạo sample ablation/sweep configs và smoke-validate chúng
     - Ablations tối thiểu: disable KD, disable uncertainty, disable teacher, đổi decision strategy
     - Sweep targets tối thiểu: KD temperature, KD weight, uncertainty sample count, decision strategy, teacher freeze policy, student modality assignment
     - _Requirements: REQ-ABL-001, REQ-CONF-003, REQ-OPS-002_

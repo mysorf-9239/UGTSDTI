@@ -34,6 +34,7 @@ repos:
         name: Validate YAML configs
         entry: python -m ugtsdti validate --config
         language: python
+        additional_dependencies: [pyyaml]
         files: ^configs/.*\.yaml$
         pass_filenames: true
 
@@ -44,5 +45,6 @@ repos:
         name: Validate interaction graph dependencies
         entry: python -c "from ugtsdti.config.validate import validate_only; import sys; [validate_only(f) for f in sys.argv[1:]]"
         language: python
+        additional_dependencies: [pyyaml]
         files: ^configs/.*\.yaml$
         pass_filenames: true

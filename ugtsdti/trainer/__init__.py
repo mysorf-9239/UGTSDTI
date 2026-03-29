@@ -1,5 +1,13 @@
 """Training orchestration primitives."""
 
-from ugtsdti.trainer.trainer import PipelineExecutor, PipelineTrace
+from ugtsdti.trainer.evaluator import EvaluationResult, Evaluator
+from ugtsdti.trainer.trainer import PipelineExecutor, PipelineTrace, Trainer, TrainStepResult
 
-__all__ = ["PipelineExecutor", "PipelineTrace"]
+__all__ = [
+    "EvaluationResult",
+    "Evaluator",
+    "PipelineExecutor",
+    "PipelineTrace",
+    "TrainStepResult",
+    "Trainer",
+]

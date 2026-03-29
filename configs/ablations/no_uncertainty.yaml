@@ -1,0 +1,20 @@
+extends:
+  - ../base_full.yaml
+interaction:
+  uncertainty:
+    type: uncertainty.mc_dropout
+    inputs:
+      - teacher.logits
+      - student.logits
+    params:
+      enabled: true
+      targets:
+        teacher: false
+        student: false
+decision:
+  type: gate.basic
+  strategy: soft
+  use_uncertainty: false
+  fallback:
+    no_teacher: student
+    no_student: teacher

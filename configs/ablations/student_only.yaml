@@ -1,0 +1,65 @@
+version: "1.0"
+experiment:
+  name: ugtsdti-student-only
+data:
+  dataset: davis
+scenario:
+  train: s1
+  eval:
+    - s1
+modalities:
+  available:
+    - sequence
+  student:
+    uses:
+      - sequence
+graph:
+  nodes:
+    student_encoder:
+      type_key: encoder.student
+      inputs:
+        - drug_seq
+        - protein_seq
+      output_attrs:
+        - embedding
+    student_head:
+      type_key: head.student
+      inputs:
+        - student_encoder.embedding
+      output_attrs:
+        - logits
+roles:
+  student:
+    outputs:
+      - student_head.logits
+interaction:
+  order:
+    - noop
+  dependencies: {}
+  noop:
+    type: noop
+    inputs:
+      - student.logits
+    params:
+      enabled: true
+decision:
+  type: identity
+  strategy: identity
+  source_key: student.logits
+training:
+  teacher:
+    freeze: true
+  student:
+    freeze: false
+  kd:
+    schedule: constant
+  gate:
+    trainable: false
+loss:
+  type: hard
+  hard_weight: 1.0
+  map: {}
+metrics:
+  enabled:
+    - f1
+  by_scenario: false

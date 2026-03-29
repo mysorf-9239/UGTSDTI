@@ -1,0 +1,24 @@
+extends:
+  - ../base_full.yaml
+sweep:
+  parameters:
+    interaction.kd.params.temperature:
+      - 1.0
+      - 2.0
+      - 4.0
+    loss.map.kd.weight:
+      - 0.1
+      - 0.3
+      - 0.5
+    interaction.uncertainty.params.sample_count:
+      - 4
+      - 8
+    decision.strategy:
+      - soft
+      - hard
+    training.teacher.freeze:
+      - true
+      - false
+    modalities.student.uses:
+      - [sequence]
+      - [sequence, structure]

@@ -1,0 +1,10 @@
+extends:
+  - ../base_full.yaml
+training:
+  kd:
+    schedule: constant
+loss:
+  map:
+    kd:
+      from: interaction.kd.loss_component
+      weight: 0.0

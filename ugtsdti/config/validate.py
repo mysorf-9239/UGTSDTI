@@ -19,6 +19,7 @@ REQ-CONF-002, REQ-ARCH-002, REQ-ARCH-004
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ugtsdti.core.errors import InvalidConfigError
@@ -627,3 +628,11 @@ def _interaction_module_params(mod_cfg: dict[str, Any]) -> dict[str, Any]:
     """Return canonical nested runtime params for an interaction module."""
     params = mod_cfg.get("params", {})
     return dict(params) if isinstance(params, dict) else {}
+
+
+def validate_only(path: str | Path) -> None:
+    """Load and validate a config file without normalization side effects."""
+    from ugtsdti.config.loader import ConfigLoader
+
+    cfg = ConfigLoader().load(Path(path))
+    ConfigValidator().validate(cfg)

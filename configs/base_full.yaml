@@ -1,0 +1,133 @@
+version: "1.0"
+experiment:
+  name: ugtsdti-full
+data:
+  dataset: davis
+  preprocessing_version: v1
+  split_version: s1_v1
+scenario:
+  train: s1
+  eval:
+    - s1
+    - s2
+    - s3
+    - s4
+modalities:
+  available:
+    - sequence
+    - structure
+  teacher:
+    uses:
+      - sequence
+      - structure
+  student:
+    uses:
+      - sequence
+graph:
+  nodes:
+    student_encoder:
+      type_key: encoder.student
+      inputs:
+        - drug_seq
+        - protein_seq
+      output_attrs:
+        - embedding
+    teacher_encoder:
+      type_key: encoder.teacher
+      inputs:
+        - drug_graph
+        - protein_seq
+      output_attrs:
+        - embedding
+    student_head:
+      type_key: head.student
+      inputs:
+        - student_encoder.embedding
+      output_attrs:
+        - logits
+    teacher_head:
+      type_key: head.teacher
+      inputs:
+        - teacher_encoder.embedding
+      output_attrs:
+        - logits
+roles:
+  student:
+    outputs:
+      - student_head.logits
+  teacher:
+    outputs:
+      - teacher_head.logits
+interaction:
+  order:
+    - kd
+    - uncertainty
+    - diagnostics
+  dependencies:
+    diagnostics:
+      - kd
+      - uncertainty
+  kd:
+    type: kd.standard
+    inputs:
+      - teacher.logits
+      - student.logits
+    params:
+      enabled: true
+      mode: logits
+      temperature: 2.0
+  uncertainty:
+    type: uncertainty.mc_dropout
+    inputs:
+      - teacher.logits
+      - student.logits
+    params:
+      enabled: true
+      targets:
+        teacher: true
+        student: true
+  diagnostics:
+    type: diagnostics.basic
+    inputs:
+      - teacher.logits
+      - student.logits
+    params:
+      enabled: true
+      emit_calibration: true
+decision:
+  type: gate.uncertainty
+  strategy: soft
+  use_uncertainty: true
+  fallback:
+    no_teacher: student
+    no_student: teacher
+training:
+  teacher:
+    freeze: true
+  student:
+    freeze: false
+  kd:
+    schedule: warmup
+    warmup_steps: 5
+  gate:
+    trainable: true
+loss:
+  type: composite
+  hard_weight: 1.0
+  map:
+    kd:
+      from: interaction.kd.loss_component
+      weight: 0.3
+metrics:
+  enabled:
+    - auroc
+    - auprc
+    - f1
+  by_scenario: true
+logging:
+  backend: file
+runtime:
+  seed: 7
+  deterministic: true
+  device: cpu
+  precision: fp32
