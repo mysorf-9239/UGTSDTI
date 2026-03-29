@@ -294,36 +294,36 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
   - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
   - _Requirements: REQ-INT-003, REQ-DEC-002, REQ-POST-002_
 
-- [ ] 15. Xây dựng data/ — Contracts, Acquisition, Preprocessing, Splitting, Loader, Validation
-  - [ ] 15.1 Triển khai data contracts trong `ugtsdti/data/contracts.py`
+- [x] 15. Xây dựng data/ — Contracts, Acquisition, Preprocessing, Splitting, Loader, Validation
+  - [x] 15.1 Triển khai data contracts trong `ugtsdti/data/contracts.py`
     - `DatasetVersion`, `SplitManifest` dataclasses từ design Section 6.6
     - _Requirements: REQ-DATA-002_
-  - [ ] 15.2 Triển khai `DataAcquisition` trong `ugtsdti/data/acquisition.py`
+  - [x] 15.2 Triển khai `DataAcquisition` trong `ugtsdti/data/acquisition.py`
     - Download/export raw dataset (pyTDC) → `data/raw/<dataset>.csv`
     - Tách hoàn toàn khỏi runtime; không được gọi từ train/eval/infer
     - _Requirements: REQ-DATA-001_
-  - [ ] 15.3 Triển khai `DataPreprocessor` trong `ugtsdti/data/preprocessing.py`
+  - [x] 15.3 Triển khai `DataPreprocessor` trong `ugtsdti/data/preprocessing.py`
     - Raw → materialized features: tokenized sequences, graphs, ids, labels
     - Output: `data/processed/<dataset>/<preprocessing_version>/...`
     - _Requirements: REQ-DATA-001_
-  - [ ] 15.4 Triển khai `DataSplitter` trong `ugtsdti/data/splitting.py`
+  - [x] 15.4 Triển khai `DataSplitter` trong `ugtsdti/data/splitting.py`
     - Deterministic splits cho S1, S2, S3, S4 với seed
     - Output: split files + `SplitManifest`
     - _Requirements: REQ-DATA-002, REQ-EVAL-001_
-  - [ ] 15.5 Viết tests cho split determinism và manifest consistency
+  - [x] 15.5 Viết tests cho split determinism và manifest consistency
     - Test cùng seed/dataset luôn tạo splits giống nhau
     - Test split manifest lưu đủ dataset, preprocessing, split version, seed, scenarios
     - _Requirements: REQ-DATA-002, REQ-REPRO-001_
-  - [ ] 15.6 Triển khai `DataLoaderFactory` trong `ugtsdti/data/loader.py`
+  - [x] 15.6 Triển khai `DataLoaderFactory` trong `ugtsdti/data/loader.py`
     - Chỉ đọc materialized data; không gọi pyTDC
     - Build: dataloaders, `BatchSpec`, dataset version metadata
     - _Requirements: REQ-DATA-001, REQ-DATA-003_
-  - [ ] 15.7 Triển khai `DataValidator` trong `ugtsdti/data/validate.py`
+  - [x] 15.7 Triển khai `DataValidator` trong `ugtsdti/data/validate.py`
     - Artifact presence check, split/version consistency, batch contract validation
     - Trong debug mode validate mỗi batch; normal mode validate ít nhất batch đầu tiên
     - NaN/Inf hoặc missing required keys → raise explicit error
     - _Requirements: REQ-DATA-004, REQ-QUAL-001_
-  - [ ] 15.8 Viết unit tests cho `DataValidator`
+  - [x] 15.8 Viết unit tests cho `DataValidator`
     - Test missing `labels` → `BatchSchemaError`
     - Test version mismatch hoặc artifact thiếu → explicit error
     - Test NaN trong batch → explicit error
