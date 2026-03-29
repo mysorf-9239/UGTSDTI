@@ -227,6 +227,33 @@ def test_trainer_applies_kd_warmup_schedule():
     assert gate_param.requires_grad is True
 
 
+def test_trainer_writes_artifact_bundle_with_provided_model_state(tmp_path):
+    cfg = _cfg()
+    graph_registry, interaction_registry = _prepare(cfg)
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+    artifact_writer = ArtifactWriter(tmp_path / "artifacts")
+    trainer = Trainer(executor, artifact_writer=artifact_writer)
+    identity = build_experiment_identity({"test": "train"})
+
+    trainer.step(
+        _batch(),
+        cfg,
+        ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        step_idx=1,
+        identity=identity,
+        normalized_config={"version": "1.0"},
+        split_manifest={"dataset": "davis", "split_version": "v1"},
+        model_state={"student": {"weights": [1.0]}},
+    )
+
+    bundle_dir = tmp_path / "artifacts" / identity.run_id
+    assert (bundle_dir / "model.pt").exists()
+
+    torch = pytest.importorskip("torch")
+    payload = torch.load(bundle_dir / "model.pt", map_location="cpu", weights_only=False)
+    assert payload["student"]["weights"] == [1.0]
+
+
 def test_evaluator_writes_artifact_bundle_when_configured(tmp_path):
     cfg = _cfg()
     graph_registry, interaction_registry = _prepare(cfg)

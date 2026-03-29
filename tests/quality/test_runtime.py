@@ -90,6 +90,28 @@ def test_checkpoint_config_or_dataset_mismatch_raises(tmp_path):
         CheckpointIO().load(path, expected_dataset="kiba")
 
 
+def test_checkpoint_io_round_trips_tensor_state(tmp_path):
+    torch = pytest.importorskip("torch")
+    bundle = CheckpointBundle(
+        model_state={"weight": torch.tensor([1.0, 2.0])},
+        optimizer_state={"momentum": torch.tensor([0.5])},
+        scheduler_state={},
+        rng_state={},
+        epoch=1,
+        step=2,
+        identity={"config_hash": "abc"},
+        config={"model": "baseline"},
+        dataset_metadata={"dataset": "davis"},
+        split_metadata={"split_version": "v1"},
+    )
+
+    path = CheckpointIO().save(bundle, tmp_path / "checkpoint.pt")
+    loaded = CheckpointIO().load(path)
+
+    assert torch.equal(loaded.model_state["weight"], torch.tensor([1.0, 2.0]))
+    assert torch.equal(loaded.optimizer_state["momentum"], torch.tensor([0.5]))
+
+
 def test_file_logger_and_composite_logger_write_outputs(tmp_path):
     file_logger = FileLogger(tmp_path / "logs")
     composite = CompositeLogger([file_logger, WandbLogger(project="test", enabled=False)])

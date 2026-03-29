@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 
 import yaml
 
@@ -109,7 +110,77 @@ def test_cli_train_without_handler_fails_closed(tmp_path):
     config_path.write_text(yaml.safe_dump(_valid_cfg()), encoding="utf-8")
     buffer = io.StringIO()
 
-    exit_code = run_cli(["train", str(config_path)], stdout=buffer)
+    exit_code = run_cli(["train", str(config_path)], stdout=buffer, handlers={})
 
     assert exit_code == 1
     assert "No execution handler is configured" in buffer.getvalue()
+
+
+def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
+    records_dir = tmp_path / "data" / "splits" / "davis" / "v1" / "s1_v1"
+    processed_dir = tmp_path / "data" / "processed" / "davis" / "v1"
+    records_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "dataset_version.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "raw_version": "raw-v1",
+                "preprocessing_version": "v1",
+                "record_count": 2,
+                "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    split_path = records_dir / "s1.jsonl"
+    split_path.write_text(
+        '{"drug_seq":"AA","protein_seq":"MK","labels":1.0,"scenario":"s1"}\n'
+        '{"drug_seq":"BB","protein_seq":"ML","labels":0.0,"scenario":"s1"}\n',
+        encoding="utf-8",
+    )
+    (records_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "preprocessing_version": "v1",
+                "split_version": "s1_v1",
+                "seed": 7,
+                "scenarios": ["s1"],
+                "split_paths": {"s1": str(split_path)},
+                "counts": {"s1": 2},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = _valid_cfg()
+    cfg["data"]["preprocessing_version"] = "v1"
+    cfg["data"]["split_version"] = "s1_v1"
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.baseline",
+            "inputs": ["drug_seq", "protein_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    cfg["runtime"] = {"data_dir": str(tmp_path / "data"), "artifacts_dir": str(tmp_path / "artifacts"), "seed": 7}
+    config_path = tmp_path / "train.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["train", str(config_path)], stdout=buffer)
+
+    assert exit_code == 0
+    assert '"command": "train"' in buffer.getvalue()
+    artifacts_dir = tmp_path / "artifacts"
+    assert any(path.is_dir() for path in artifacts_dir.iterdir())

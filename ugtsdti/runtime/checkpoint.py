@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ugtsdti.core.errors import CheckpointCorruptedError
+from ugtsdti.runtime.artifacts import _serialize_payload
 
 
 @dataclass
@@ -73,7 +74,13 @@ class CheckpointIO:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temp_path = destination.with_suffix(destination.suffix + ".tmp")
-        temp_path.write_text(json.dumps(bundle.to_dict(), sort_keys=True, indent=2), encoding="utf-8")
+        payload = bundle.to_dict()
+        try:
+            import torch
+
+            torch.save(payload, temp_path)
+        except ImportError:
+            temp_path.write_text(json.dumps(_serialize_payload(payload), sort_keys=True, indent=2), encoding="utf-8")
         os.replace(temp_path, destination)
         return destination
 
@@ -93,15 +100,7 @@ class CheckpointIO:
                 key=str(checkpoint_path),
             )
 
-        try:
-            payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise CheckpointCorruptedError(
-                "Checkpoint file is not valid JSON.",
-                stage="runtime",
-                component="CheckpointIO",
-                key=str(checkpoint_path),
-            ) from exc
+        payload = self._load_payload(checkpoint_path)
 
         bundle = CheckpointBundle.from_dict(payload)
         if expected_config_hash is not None and bundle.identity.get("config_hash") != expected_config_hash:
@@ -119,3 +118,31 @@ class CheckpointIO:
                 key="dataset_metadata.dataset",
             )
         return bundle
+
+    def _load_payload(self, checkpoint_path: Path) -> dict[str, Any]:
+        try:
+            import torch
+
+            payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            pass
+
+        try:
+            payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise CheckpointCorruptedError(
+                "Checkpoint file is not a valid checkpoint payload.",
+                stage="runtime",
+                component="CheckpointIO",
+                key=str(checkpoint_path),
+            ) from exc
+        if not isinstance(payload, dict):
+            raise CheckpointCorruptedError(
+                "Checkpoint payload must deserialize to a mapping.",
+                stage="runtime",
+                component="CheckpointIO",
+                key=str(checkpoint_path),
+            )
+        return payload

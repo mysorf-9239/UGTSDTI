@@ -245,6 +245,7 @@ class Trainer:
         identity: ExperimentIdentity | dict[str, Any] | None = None,
         normalized_config: dict[str, Any] | None = None,
         split_manifest: dict[str, Any] | None = None,
+        model_state: dict[str, Any] | None = None,
         logs_dir: str | None = None,
     ) -> TrainStepResult:
         scheduled_cfg = self._apply_kd_schedule(cfg, step_idx)
@@ -282,7 +283,11 @@ class Trainer:
                 metrics={key: value for key, value in state.snapshot().items() if key.startswith("metrics.")},
                 diagnostics={key: value for key, value in state.snapshot().items() if key.startswith("diagnostics.")},
                 split_manifest=split_manifest or {},
-                model_state={"trainer.step": step_idx, "trainer.epoch": epoch},
+                model_state=model_state
+                if model_state is not None
+                else checkpoint_bundle.model_state
+                if checkpoint_bundle
+                else {},
                 execution_trace=asdict(trace),
                 state_boundary_summaries=trace.state_boundary_summaries,
                 logs_dir=logs_dir,

@@ -3,6 +3,7 @@
 from ugtsdti.runtime.adapter import RuntimeAdapter
 from ugtsdti.runtime.artifacts import ArtifactWriter
 from ugtsdti.runtime.checkpoint import CheckpointBundle, CheckpointIO
+from ugtsdti.runtime.defaults import build_default_graph_registry, build_default_interaction_registry
 from ugtsdti.runtime.identity import (
     ExperimentIdentity,
     build_experiment_identity,
@@ -15,6 +16,8 @@ __all__ = [
     "ArtifactWriter",
     "CheckpointBundle",
     "CheckpointIO",
+    "build_default_graph_registry",
+    "build_default_interaction_registry",
     "ExperimentIdentity",
     "build_experiment_identity",
     "build_reproducibility_key",
