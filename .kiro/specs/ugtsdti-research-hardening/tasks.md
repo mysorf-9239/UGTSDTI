@@ -141,16 +141,16 @@ Có 4 checkpoint:
   - Verify gate surface không claim support giả
   - _Requirements: REQ-HARD-005, REQ-HARD-006, REQ-HARD-007, REQ-HARD-008, REQ-HARD-009_
 
-- [ ] 11. Nâng train loop lên mức research-usable
-  - [ ] 11.1 Refactor CLI `train` thành epoch-aware loop
+- [x] 11. Nâng train loop lên mức research-usable
+  - [x] 11.1 Refactor CLI `train` thành epoch-aware loop
     - _Requirements: REQ-HARD-010_
-  - [ ] 11.2 Thêm checkpoint cadence và summary logging cadence
+  - [x] 11.2 Thêm checkpoint cadence và summary logging cadence
     - _Requirements: REQ-HARD-010_
-  - [ ] 11.3 Thêm optional eval cadence sau epoch
+  - [x] 11.3 Thêm optional eval cadence sau epoch
     - _Requirements: REQ-HARD-010_
-  - [ ] 11.4 Đồng bộ data loading path giữa CLI và data subsystem
+  - [x] 11.4 Đồng bộ data loading path giữa CLI và data subsystem
     - _Requirements: REQ-HARD-010_
-  - [ ] 11.5 Viết integration tests cho train/eval lineage
+  - [x] 11.5 Viết integration tests cho train/eval lineage
     - train -> checkpoint -> eval -> artifact chain
     - _Requirements: REQ-HARD-010_
 

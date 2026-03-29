@@ -38,6 +38,14 @@ _DEFAULT_TRAINING: dict[str, Any] = {
     "student": {"freeze": False},
     "kd": {"schedule": "constant"},
     "gate": {"trainable": False},
+    "optimizer": {"lr": 0.01},
+    "loop": {
+        "epochs": 1,
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 0,
+        "eval_partition": "val",
+    },
 }
 
 _DEFAULT_LOSS: dict[str, Any] = {

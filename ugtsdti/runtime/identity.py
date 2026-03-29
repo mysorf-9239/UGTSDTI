@@ -5,6 +5,7 @@ import hashlib
 import json
 import subprocess
 import uuid
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -34,7 +35,7 @@ def build_experiment_identity(config: dict[str, Any]) -> ExperimentIdentity:
 
 
 def hash_config(config: dict[str, Any]) -> str:
-    payload = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(_canonicalize_config_for_hash(config), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -68,3 +69,11 @@ def build_reproducibility_key(
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _canonicalize_config_for_hash(config: dict[str, Any]) -> dict[str, Any]:
+    canonical = deepcopy(config)
+    runtime = canonical.get("runtime")
+    if isinstance(runtime, dict):
+        runtime.pop("checkpoint_path", None)
+    return canonical

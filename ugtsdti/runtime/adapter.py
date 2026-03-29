@@ -21,6 +21,9 @@ class RuntimeAdapter:
             "artifacts_dir": str(Path(runtime.get("artifacts_dir", "artifacts")).resolve()),
             "checkpoint_dir": str(Path(runtime.get("checkpoint_dir", "checkpoints")).resolve()),
             "data_dir": str(Path(runtime.get("data_dir", "data")).resolve()),
+            "checkpoint_path": str(Path(runtime["checkpoint_path"]).resolve())
+            if runtime.get("checkpoint_path")
+            else None,
             "debug": bool(runtime.get("debug", False)),
         }
         return adapted

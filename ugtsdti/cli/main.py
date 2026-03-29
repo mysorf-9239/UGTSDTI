@@ -176,6 +176,17 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
     context = _build_context(runtime_state, mode="train")
     train_scenario = str(runtime_cfg.get("scenario", {}).get("train", "s1"))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=[train_scenario], partition="train")
+    loop_cfg = _resolve_loop_cfg(runtime_cfg)
+    eval_batches: list[dict[str, Any]] = []
+    eval_partition = str(loop_cfg["eval_partition"])
+    if int(loop_cfg["eval_every_epochs"]) > 0:
+        eval_batches, _ = _load_batches(
+            runtime_cfg,
+            runtime_state,
+            scenarios=list(runtime_cfg.get("scenario", {}).get("eval", [])),
+            partition=eval_partition,
+            allow_empty=True,
+        )
     runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
@@ -190,31 +201,89 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
         parameter_groups=executor.parameter_groups(runtime_cfg),
     )
     optimizer = _build_optimizer(cfg, executor, runtime_cfg)
+    evaluator = Evaluator(executor, logger=logger) if eval_batches else None
     checkpoint_path = Path(runtime_state["checkpoint_dir"]) / f"{runtime_identity['run_id']}.pt"
+    global_step = 0
+    last_checkpoint = None
+    last_eval_metrics: dict[str, Any] = {}
 
     try:
-        for step_idx, batch in enumerate(batches):
-            trainer.step(
-                batch,
-                runtime_cfg,
-                context,
-                optimizer=optimizer,
-                step_idx=step_idx,
-                epoch=0,
-                checkpoint_path=str(checkpoint_path),
-                identity=runtime_identity,
-                normalized_config=runtime_cfg,
-                split_manifest=split_manifest,
-                model_state=lambda: executor.model_state(runtime_cfg),
-                logs_dir=str(logs_dir),
-            )
+        for epoch_idx in range(int(loop_cfg["epochs"])):
+            epoch_number = epoch_idx + 1
+            last_train_result = None
+            for batch_idx, batch in enumerate(batches):
+                should_checkpoint = (
+                    batch_idx == len(batches) - 1 and epoch_number % int(loop_cfg["checkpoint_every_epochs"]) == 0
+                )
+                last_train_result = trainer.step(
+                    batch,
+                    runtime_cfg,
+                    context,
+                    optimizer=optimizer,
+                    step_idx=global_step,
+                    epoch=epoch_number,
+                    checkpoint_path=str(checkpoint_path) if should_checkpoint else None,
+                    identity=runtime_identity,
+                    normalized_config=runtime_cfg,
+                    split_manifest=split_manifest,
+                    model_state=lambda: executor.model_state(runtime_cfg),
+                    logs_dir=str(logs_dir),
+                )
+                global_step += 1
+                if global_step % int(loop_cfg["summary_every_steps"]) == 0:
+                    stream.write(
+                        json.dumps(
+                            {
+                                "command": args.command,
+                                "epoch": epoch_number,
+                                "event": "train_step",
+                                "step": global_step,
+                                "metrics": last_train_result.logged_metrics,
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                if should_checkpoint:
+                    last_checkpoint = str(checkpoint_path)
+
+            if evaluator is not None and epoch_number % int(loop_cfg["eval_every_epochs"]) == 0:
+                eval_result = evaluator.evaluate(
+                    eval_batches,
+                    runtime_cfg,
+                    _build_context(runtime_state, mode="eval"),
+                )
+                last_eval_metrics = {
+                    key: value for key, value in eval_result.metrics.items() if key.startswith("metrics.")
+                }
+                logger.log_metrics(
+                    _scalarize_metrics(last_eval_metrics),
+                    step=global_step,
+                )
+                stream.write(
+                    json.dumps(
+                        {
+                            "command": args.command,
+                            "epoch": epoch_number,
+                            "event": "eval_epoch",
+                            "metrics": _scalarize_metrics(last_eval_metrics),
+                            "partition": eval_partition,
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
         stream.write(
             json.dumps(
                 {
-                    "batches": len(batches),
-                    "checkpoint": str(checkpoint_path),
+                    "batches_per_epoch": len(batches),
+                    "checkpoint": last_checkpoint,
                     "command": args.command,
+                    "epochs": int(loop_cfg["epochs"]),
+                    "eval_partition": eval_partition if eval_batches else None,
+                    "final_eval_metrics": _scalarize_metrics(last_eval_metrics),
                     "logs_dir": str(logs_dir),
+                    "steps": global_step,
                 },
                 sort_keys=True,
             )
@@ -226,10 +295,11 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
 
 def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
-    context = _build_context(runtime_state, mode="eval")
     eval_scenarios = list(runtime_cfg.get("scenario", {}).get("eval", []))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios, partition="test")
     runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
+    checkpoint_bundle = _maybe_load_checkpoint(runtime_cfg, runtime_state, executor, runtime_identity)
+    context = _build_context(runtime_state, mode="eval")
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
     logger = _build_logger(cfg, logs_dir)
@@ -243,12 +313,23 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identi
             identity=runtime_identity,
             normalized_config=runtime_cfg,
             split_manifest=split_manifest,
-            model_state=executor.model_state(runtime_cfg),
+            model_state=checkpoint_bundle.model_state
+            if checkpoint_bundle is not None
+            else executor.model_state(runtime_cfg),
             logs_dir=str(logs_dir),
         )
         summary = {key: value for key, value in result.metrics.items() if key.startswith("metrics.")}
         stream.write(
-            json.dumps({"command": args.command, "logs_dir": str(logs_dir), "metrics": summary}, sort_keys=True) + "\n"
+            json.dumps(
+                {
+                    "command": args.command,
+                    "checkpoint": runtime_state.get("checkpoint_path"),
+                    "logs_dir": str(logs_dir),
+                    "metrics": _scalarize_metrics(summary),
+                },
+                sort_keys=True,
+            )
+            + "\n"
         )
     finally:
         logger.close()
@@ -368,6 +449,7 @@ def _load_batches(
     *,
     scenarios: list[str],
     partition: str,
+    allow_empty: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     data_cfg = dict(cfg.get("data", {}))
     dataset = str(data_cfg.get("dataset", "dataset"))
@@ -386,7 +468,7 @@ def _load_batches(
         partition=partition,
     )
     batches = [_tensorize_batch(batch) for batch in raw_batches]
-    if not batches:
+    if not batches and not allow_empty:
         raise UGTSDTIError(
             "No materialized rows were loaded for the requested scenarios.",
             stage="cli",
@@ -398,6 +480,59 @@ def _load_batches(
     split_manifest["selected_scenarios"] = list(scenarios)
     split_manifest["selected_partition"] = partition
     return batches, split_manifest
+
+
+def _resolve_loop_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+    training_cfg = dict(cfg.get("training", {}))
+    loop_cfg = dict(training_cfg.get("loop", {}))
+    epochs = max(1, int(loop_cfg.get("epochs", 1)))
+    checkpoint_every_epochs = max(1, int(loop_cfg.get("checkpoint_every_epochs", 1)))
+    summary_every_steps = max(1, int(loop_cfg.get("summary_every_steps", 1)))
+    eval_every_epochs = max(0, int(loop_cfg.get("eval_every_epochs", 0)))
+    eval_partition = str(loop_cfg.get("eval_partition", "val"))
+    return {
+        "epochs": epochs,
+        "checkpoint_every_epochs": checkpoint_every_epochs,
+        "summary_every_steps": summary_every_steps,
+        "eval_every_epochs": eval_every_epochs,
+        "eval_partition": eval_partition,
+    }
+
+
+def _maybe_load_checkpoint(
+    cfg: dict[str, Any],
+    runtime_state: dict[str, Any],
+    executor: PipelineExecutor,
+    runtime_identity: dict[str, Any],
+) -> Any | None:
+    checkpoint_path = runtime_state.get("checkpoint_path")
+    if not checkpoint_path:
+        return None
+    checkpoint = CheckpointIO().load(
+        checkpoint_path,
+        expected_config_hash=str(runtime_identity["config_hash"]),
+        expected_dataset=str(cfg.get("data", {}).get("dataset", "")),
+        expected_reproducibility_key=str(runtime_identity["reproducibility_key"]),
+    )
+    executor.load_model_state(cfg, checkpoint.model_state)
+    return checkpoint
+
+
+def _scalarize_metrics(metrics: dict[str, Any]) -> dict[str, float]:
+    scalarized: dict[str, float] = {}
+    for key, value in metrics.items():
+        try:
+            scalarized[key] = float(value)
+        except (TypeError, ValueError):
+            try:
+                import torch
+
+                if isinstance(value, torch.Tensor):
+                    scalarized[key] = float(value.detach().to(dtype=torch.float32).mean().cpu().item())
+                    continue
+            except ImportError:
+                pass
+    return scalarized
 
 
 def _tensorize_batch(batch: dict[str, Any]) -> dict[str, Any]:

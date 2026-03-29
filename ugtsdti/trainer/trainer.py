@@ -243,6 +243,30 @@ class PipelineExecutor:
                 state[node_name] = state_dict()
         return state
 
+    def load_model_state(self, cfg: dict[str, Any], model_state: dict[str, Any]) -> None:
+        """Load runtime state into graph nodes when supported by their runtimes."""
+        if not isinstance(model_state, dict):
+            raise InvalidConfigError(
+                "Model state must be a mapping of node_name -> state_dict.",
+                stage="runtime",
+                component="PipelineExecutor",
+                key="model_state",
+            )
+        plan = cfg["graph_plan"]
+        definitions = plan.definition_map()
+        for node_name, node_state in model_state.items():
+            if node_name not in definitions:
+                raise InvalidConfigError(
+                    f"Model state references unknown graph node {node_name!r}.",
+                    stage="runtime",
+                    component="PipelineExecutor",
+                    key=f"model_state.{node_name}",
+                )
+            runtime = self._graph_engine.ensure_runtime(definitions[node_name])
+            load_state_dict = getattr(runtime, "load_state_dict", None)
+            if callable(load_state_dict):
+                load_state_dict(node_state)
+
 
 class Trainer:
     """Training orchestration on top of the shared pipeline executor."""

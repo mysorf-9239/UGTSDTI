@@ -42,6 +42,16 @@ def test_experiment_identity_separates_run_id_from_config_hash():
     assert identity1.run_id != identity2.run_id
 
 
+def test_experiment_identity_ignores_runtime_checkpoint_path_for_hash():
+    base_cfg = {"model": "a", "runtime": {"device": "cpu"}}
+    resumed_cfg = {"model": "a", "runtime": {"device": "cpu", "checkpoint_path": "/tmp/model.pt"}}
+
+    identity1 = build_experiment_identity(base_cfg)
+    identity2 = build_experiment_identity(resumed_cfg)
+
+    assert identity1.config_hash == identity2.config_hash
+
+
 def test_runtime_adapter_resolves_operational_knobs():
     adapted = RuntimeAdapter().adapt(
         {
@@ -51,6 +61,7 @@ def test_runtime_adapter_resolves_operational_knobs():
                 "artifacts_dir": "artifacts/test",
                 "pin_memory": True,
                 "data_dir": "data/input",
+                "checkpoint_path": "checkpoints/latest.pt",
             }
         }
     )
@@ -59,6 +70,7 @@ def test_runtime_adapter_resolves_operational_knobs():
     assert adapted["artifacts_dir"].endswith("artifacts/test")
     assert adapted["pin_memory"] is True
     assert adapted["data_dir"].endswith("data/input")
+    assert adapted["checkpoint_path"].endswith("checkpoints/latest.pt")
 
 
 def test_checkpoint_corrupt_bundle_raises(tmp_path):

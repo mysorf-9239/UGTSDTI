@@ -57,6 +57,14 @@ class SimpleLinearHeadRuntime(NodeRuntime):
             "bias": self._bias.detach().cpu().clone(),
         }
 
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        import torch
+
+        if "scale" in state:
+            self._scale.data = torch.as_tensor(state["scale"], dtype=torch.float32).reshape(self._scale.shape)
+        if "bias" in state:
+            self._bias.data = torch.as_tensor(state["bias"], dtype=torch.float32).reshape(self._bias.shape)
+
 
 def build_default_graph_registry() -> NodeRegistry:
     registry = NodeRegistry()
