@@ -74,6 +74,13 @@ class UndeclaredOutputRuntime(NodeRuntime):
         return {"embedding": [1.0], "secret": "oops"}
 
 
+class MissingDeclaredOutputRuntime(NodeRuntime):
+    """Returns fewer attrs than declared in the spec."""
+
+    def forward(self, inputs, context):
+        return {"embedding": [1.0]}
+
+
 class InputReadingRuntime(NodeRuntime):
     """Reads only declared inputs — correct behavior."""
 
@@ -110,6 +117,18 @@ class TestUndeclaredOutputRejected:
         engine = GraphEngine(registry)
         engine.run(plan, state, writer, _make_context())
         assert state.has("enc.embedding")
+
+    def test_missing_declared_attr_raises(self):
+        spec = NodePluginSpec(type_key="enc", output_attrs=["embedding", "mask"])
+        registry = _make_registry((spec, MissingDeclaredOutputRuntime))
+        plan = _build_and_plan(
+            registry,
+            {"nodes": [{"name": "enc", "type_key": "enc", "inputs": []}]},
+        )
+        state, writer = _make_state_and_writer()
+        engine = GraphEngine(registry)
+        with pytest.raises(InvalidConfigError, match="missing declared output attrs"):
+            engine.run(plan, state, writer, _make_context())
 
 
 # ---------------------------------------------------------------------------
@@ -345,3 +364,28 @@ class TestOutputKeyCollision:
         engine.run(plan, state, writer, _make_context())
         assert state.has("a.out")
         assert state.has("b.out")
+
+
+class TestRuntimeLifecycle:
+    def test_runtime_is_rebuilt_for_new_plan_params(self):
+        spec = NodePluginSpec(type_key="parametric", output_attrs=["out"])
+
+        class ParamRuntime(NodeRuntime):
+            def __init__(self, value=0):
+                self._value = value
+
+            def forward(self, inputs, context):
+                return {"out": self._value}
+
+        registry = _make_registry((spec, ParamRuntime))
+        engine = GraphEngine(registry)
+        context = _make_context()
+
+        for expected in (1, 2):
+            plan = _build_and_plan(
+                registry,
+                {"nodes": [{"name": "n", "type_key": "parametric", "inputs": [], "params": {"value": expected}}]},
+            )
+            state, writer = _make_state_and_writer()
+            engine.run(plan, state, writer, context)
+            assert state.get("n.out") == expected

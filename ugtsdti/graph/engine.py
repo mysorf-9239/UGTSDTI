@@ -97,9 +97,6 @@ class GraphEngine:
         self._debug = debug
         self._strict_mode = strict_mode
 
-        # Cache of already-built runtimes (node_name -> NodeRuntime)
-        self._runtime_cache: dict[str, Any] = {}
-
     def run(
         self,
         plan: GraphPlan,
@@ -120,6 +117,7 @@ class GraphEngine:
         """
         trace = GraphTrace(node_order=list(plan.order))
         defn_map = plan.definition_map()
+        runtime_cache: dict[str, Any] = {}
 
         for node_name in plan.order:
             defn = defn_map[node_name]
@@ -129,7 +127,9 @@ class GraphEngine:
             inputs = self._materialize_inputs(node_name, defn.inputs, state)
 
             # 2. Get or build runtime
-            runtime = self._get_or_build_runtime(defn)
+            if node_name not in runtime_cache:
+                runtime_cache[node_name] = self._registry.build_runtime(defn)
+            runtime = runtime_cache[node_name]
 
             # 3. Forward
             raw_outputs: dict[str, Any] = runtime.forward(inputs, context)
@@ -190,12 +190,6 @@ class GraphEngine:
             inputs[key] = state.get(key)
         return inputs
 
-    def _get_or_build_runtime(self, defn: Any) -> Any:
-        """Return cached runtime or build a new one."""
-        if defn.name not in self._runtime_cache:
-            self._runtime_cache[defn.name] = self._registry.build_runtime(defn)
-        return self._runtime_cache[defn.name]
-
     def _validate_outputs(
         self,
         node_name: str,
@@ -208,6 +202,8 @@ class GraphEngine:
             InvalidConfigError: If an undeclared attr is returned.
         """
         declared_set = set(declared_attrs)
+        returned_set = set(raw_outputs)
+
         for attr in raw_outputs:
             if attr not in declared_set:
                 raise InvalidConfigError(
@@ -217,6 +213,16 @@ class GraphEngine:
                     component=node_name,
                     key=f"{node_name}.{attr}",
                 )
+
+        missing = sorted(declared_set - returned_set)
+        if missing:
+            raise InvalidConfigError(
+                f"Node {node_name!r} is missing declared output attrs {missing}. "
+                f"Returned attrs: {sorted(returned_set)}.",
+                stage="graph",
+                component=node_name,
+                key=node_name,
+            )
 
 
 # ---------------------------------------------------------------------------
