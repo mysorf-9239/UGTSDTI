@@ -106,7 +106,7 @@ class InteractionPlanner:
                     name=name,
                     type_key=type_key,
                     inputs=list(module_cfg.get("inputs", [])),
-                    params=dict(module_cfg),
+                    params=dict(module_cfg.get("params", {})),
                     dependencies=list(deps),
                 )
             )

@@ -152,24 +152,24 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - **Property 7: InteractionPlanner với cycle luôn raise `InvalidInteractionGraphError`**
     - **Validates: REQ-INT-001**
 
-- [ ] 6. Xây dựng minimal decision/postprocess/runtime path — Identity Decision, Hard Loss, Shared Executor
-  - [ ] 6.1 Triển khai `DecisionModule` abstract base và `IdentityDecisionModule` trong `ugtsdti/decision/base.py` và `ugtsdti/decision/module.py`
+- [x] 6. Xây dựng minimal decision/postprocess/runtime path — Identity Decision, Hard Loss, Shared Executor
+  - [x] 6.1 Triển khai `DecisionModule` abstract base và `IdentityDecisionModule` trong `ugtsdti/decision/base.py` và `ugtsdti/decision/module.py`
     - Abstract `forward(state, context) -> dict[str, Any]`
     - Contract: trả về final `logits`; baseline không bắt buộc emit `gate.alpha`
     - Identity path copy canonical branch logits sang final `logits`
     - _Requirements: REQ-DEC-001, REQ-DEC-002_
-  - [ ] 6.2 Triển khai minimal `LossComposer` và `LossMapValidator` trong `ugtsdti/postprocess/loss.py`
+  - [x] 6.2 Triển khai minimal `LossComposer` và `LossMapValidator` trong `ugtsdti/postprocess/loss.py`
     - Baseline hard-loss-only path nhưng vẫn giữ explicit composition surface
     - Emit: `loss.total`, `loss.hard`
     - Không include interaction output nào nếu không có mapping explicit
     - _Requirements: REQ-POST-001, REQ-ARCH-003_
-  - [ ] 6.3 Triển khai `PipelineExecutor` shared trong `ugtsdti/trainer/trainer.py`
+  - [x] 6.3 Triển khai `PipelineExecutor` shared trong `ugtsdti/trainer/trainer.py`
     - `run_until_decision(batch, cfg, context) -> State`
     - Thực thi: init `State` → validate batch/spec → graph → role binding → interaction → decision
     - Emit human-readable stage trace và state boundary summaries ở debug mode
     - MUST NOT mutate `State` ngoài `StateWriter`; MUST NOT dựa vào shared mutable state giữa workers/processes
     - _Requirements: REQ-ARCH-001, REQ-ARCH-003, REQ-GRAPH-003, REQ-QUAL-001, REQ-QUAL-004_
-  - [ ] 6.4 Viết integration tests cho minimal baseline path
+  - [x] 6.4 Viết integration tests cho minimal baseline path
     - Chạy minimal baseline config với student encoder + student head + no-op interaction + identity decision + hard loss
     - Verify `student.logits` và final `logits` được tạo đúng stage
     - Verify debug trace và state boundary summaries được tạo đúng
