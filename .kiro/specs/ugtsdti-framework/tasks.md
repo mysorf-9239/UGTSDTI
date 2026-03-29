@@ -66,7 +66,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Normalize → `NormalizedConfig`; idempotent; serializable; stable để hash
     - Không tự ý di chuyển component giữa stage hoặc suy luận hidden loss mappings
     - _Requirements: REQ-CONF-003_
-  - [ ]* 2.6 Viết property test cho normalization idempotency
+  - [x]* 2.6 Viết property test cho normalization idempotency
     - **Property 2: normalize(normalize(cfg)) == normalize(cfg) với mọi valid config**
     - **Property 3: parse -> normalize -> serialize -> parse giữ semantic equivalence**
     - **Validates: REQ-CONF-003**
