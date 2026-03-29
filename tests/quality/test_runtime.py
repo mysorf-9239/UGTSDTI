@@ -76,7 +76,7 @@ def test_checkpoint_config_or_dataset_mismatch_raises(tmp_path):
         rng_state={},
         epoch=1,
         step=2,
-        identity={"config_hash": "abc"},
+        identity={"config_hash": "abc", "reproducibility_key": "rep-1"},
         config={"model": "baseline"},
         dataset_metadata={"dataset": "davis"},
         split_metadata={"split_version": "v1"},
@@ -88,6 +88,9 @@ def test_checkpoint_config_or_dataset_mismatch_raises(tmp_path):
 
     with pytest.raises(CheckpointCorruptedError):
         CheckpointIO().load(path, expected_dataset="kiba")
+
+    with pytest.raises(CheckpointCorruptedError):
+        CheckpointIO().load(path, expected_reproducibility_key="other")
 
 
 def test_checkpoint_io_round_trips_tensor_state(tmp_path):

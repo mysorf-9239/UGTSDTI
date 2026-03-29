@@ -10,6 +10,7 @@ import yaml
 from ugtsdti.cli import resolve_sweep_targets, run_cli
 from ugtsdti.config.loader import ConfigLoader
 from ugtsdti.config.normalize import ConfigNormalizer
+from ugtsdti.runtime import CheckpointIO
 
 
 def _valid_cfg() -> dict:
@@ -212,13 +213,26 @@ def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
     exit_code = run_cli(["train", str(config_path)], stdout=buffer)
 
     assert exit_code == 0
-    assert '"command": "train"' in buffer.getvalue()
-    assert '"checkpoint":' in buffer.getvalue()
-    assert '"logs_dir":' in buffer.getvalue()
+    lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
+    assert lines[0].startswith("run_id=")
+    summary = json.loads(lines[-1])
+    run_id = lines[0].split()[0].split("=", 1)[1]
+    assert summary["command"] == "train"
+    assert run_id in summary["checkpoint"]
+    assert run_id in summary["logs_dir"]
     artifacts_dir = tmp_path / "artifacts"
     assert any(path.is_dir() for path in artifacts_dir.iterdir())
     checkpoint_dir = tmp_path / "checkpoints"
     assert checkpoint_dir.exists()
+    artifact_identity = json.loads((artifacts_dir / run_id / "identity.json").read_text(encoding="utf-8"))
+    log_identity = json.loads((Path(summary["logs_dir"]) / "identity.json").read_text(encoding="utf-8"))
+    checkpoint_bundle = CheckpointIO().load(summary["checkpoint"])
+
+    assert artifact_identity["run_id"] == run_id
+    assert log_identity["run_id"] == run_id
+    assert checkpoint_bundle.identity["run_id"] == run_id
+    assert artifact_identity["config_hash"] == checkpoint_bundle.identity["config_hash"]
+    assert artifact_identity["reproducibility_key"] == checkpoint_bundle.identity["reproducibility_key"]
 
 
 def test_cli_train_can_register_runtime_plugins_from_config(tmp_path):

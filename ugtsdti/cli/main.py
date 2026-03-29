@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -26,11 +27,12 @@ from ugtsdti.runtime import (
     build_default_graph_registry,
     build_default_interaction_registry,
     build_experiment_identity,
+    build_reproducibility_key,
     seed_everything,
 )
 from ugtsdti.trainer import Evaluator, PipelineExecutor, Trainer
 
-CommandHandler = Callable[[dict[str, Any], argparse.Namespace], Any]
+CommandHandler = Callable[..., Any]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,7 +101,7 @@ def run_cli(
                 component="main",
                 key=args.command,
             )
-        handler(normalized_cfg, args)
+        _call_handler(handler, normalized_cfg, args, identity)
         return 0
     except UGTSDTIError as exc:
         stream.write(f"ERROR: {exc}\n")
@@ -143,19 +145,40 @@ def main(argv: list[str] | None = None) -> int:
 
 def _default_handlers(stream: Any) -> dict[str, CommandHandler]:
     return {
-        "train": lambda cfg, args: _run_train(cfg, args, stream),
-        "eval": lambda cfg, args: _run_eval(cfg, args, stream),
-        "sweep": lambda cfg, args: _run_sweep(cfg, args, stream),
+        "train": lambda cfg, args, identity: _run_train(cfg, args, stream, identity),
+        "eval": lambda cfg, args, identity: _run_eval(cfg, args, stream, identity),
+        "sweep": lambda cfg, args, identity: _run_sweep(cfg, args, stream, identity),
     }
 
 
-def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> None:
+def _call_handler(
+    handler: CommandHandler,
+    cfg: dict[str, Any],
+    args: argparse.Namespace,
+    identity: Any,
+) -> Any:
+    try:
+        positional = [
+            parameter
+            for parameter in inspect.signature(handler).parameters.values()
+            if parameter.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        ]
+    except (TypeError, ValueError):
+        positional = []
+
+    if len(positional) >= 3:
+        return handler(cfg, args, identity)
+    return handler(cfg, args)
+
+
+def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     context = _build_context(runtime_state, mode="train")
     train_scenario = str(runtime_cfg.get("scenario", {}).get("train", "s1"))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=[train_scenario], partition="train")
-    identity = build_experiment_identity(cfg)
-    logs_dir = _logs_dir(runtime_state, identity.run_id)
+    runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
+    logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
+    _write_identity_log(logs_dir, runtime_identity)
     logger = _build_logger(cfg, logs_dir)
     checkpoint_io = CheckpointIO()
     artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
@@ -167,7 +190,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> No
         parameter_groups=executor.parameter_groups(runtime_cfg),
     )
     optimizer = _build_optimizer(cfg, executor, runtime_cfg)
-    checkpoint_path = Path(runtime_state["checkpoint_dir"]) / f"{identity.run_id}.pt"
+    checkpoint_path = Path(runtime_state["checkpoint_dir"]) / f"{runtime_identity['run_id']}.pt"
 
     try:
         for step_idx, batch in enumerate(batches):
@@ -179,7 +202,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> No
                 step_idx=step_idx,
                 epoch=0,
                 checkpoint_path=str(checkpoint_path),
-                identity=identity,
+                identity=runtime_identity,
                 normalized_config=runtime_cfg,
                 split_manifest=split_manifest,
                 model_state=lambda: executor.model_state(runtime_cfg),
@@ -201,13 +224,14 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> No
         logger.close()
 
 
-def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> None:
+def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     context = _build_context(runtime_state, mode="eval")
     eval_scenarios = list(runtime_cfg.get("scenario", {}).get("eval", []))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios, partition="test")
-    identity = build_experiment_identity(cfg)
-    logs_dir = _logs_dir(runtime_state, identity.run_id)
+    runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
+    logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
+    _write_identity_log(logs_dir, runtime_identity)
     logger = _build_logger(cfg, logs_dir)
     artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
     evaluator = Evaluator(executor, logger=logger, artifact_writer=artifact_writer)
@@ -216,7 +240,7 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> Non
             batches,
             runtime_cfg,
             context,
-            identity=identity,
+            identity=runtime_identity,
             normalized_config=runtime_cfg,
             split_manifest=split_manifest,
             model_state=executor.model_state(runtime_cfg),
@@ -230,8 +254,8 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> Non
         logger.close()
 
 
-def _run_sweep(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> None:
-    del cfg
+def _run_sweep(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
+    del cfg, identity
     stream.write(json.dumps({"command": args.command, "status": "ready"}, sort_keys=True) + "\n")
 
 
@@ -265,6 +289,31 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
 
 def _logs_dir(runtime_state: dict[str, Any], run_id: str) -> Path:
     return Path(runtime_state["artifacts_dir"]) / "_logs" / run_id
+
+
+def _materialize_runtime_identity(
+    identity: Any,
+    cfg: dict[str, Any],
+    runtime_state: dict[str, Any],
+    split_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    identity_payload = identity.to_dict() if hasattr(identity, "to_dict") else dict(identity)
+    dataset_metadata = dict(split_manifest.get("dataset_version", {}))
+    identity_payload["reproducibility_key"] = build_reproducibility_key(
+        config_hash=str(identity_payload["config_hash"]),
+        dataset_version=str(dataset_metadata.get("dataset_version", "unknown")),
+        preprocessing_version=str(
+            dataset_metadata.get("preprocessing_version", cfg.get("data", {}).get("preprocessing_version", "unknown"))
+        ),
+        split_version=str(split_manifest.get("split_version", cfg.get("data", {}).get("split_version", "unknown"))),
+        seed=int(runtime_state["seed"]),
+    )
+    return identity_payload
+
+
+def _write_identity_log(logs_dir: Path, identity: dict[str, Any]) -> None:
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    (logs_dir / "identity.json").write_text(json.dumps(identity, sort_keys=True, indent=2), encoding="utf-8")
 
 
 def _build_logger(cfg: dict[str, Any], logs_dir: Path) -> CompositeLogger:

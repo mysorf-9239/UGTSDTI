@@ -90,6 +90,7 @@ class CheckpointIO:
         *,
         expected_config_hash: str | None = None,
         expected_dataset: str | None = None,
+        expected_reproducibility_key: str | None = None,
     ) -> CheckpointBundle:
         checkpoint_path = Path(path)
         if not checkpoint_path.exists():
@@ -116,6 +117,16 @@ class CheckpointIO:
                 stage="runtime",
                 component="CheckpointIO",
                 key="dataset_metadata.dataset",
+            )
+        if (
+            expected_reproducibility_key is not None
+            and bundle.identity.get("reproducibility_key") != expected_reproducibility_key
+        ):
+            raise CheckpointCorruptedError(
+                "Checkpoint reproducibility key does not match requested run.",
+                stage="runtime",
+                component="CheckpointIO",
+                key="identity.reproducibility_key",
             )
         return bundle
 

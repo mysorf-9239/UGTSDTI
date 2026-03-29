@@ -82,22 +82,22 @@ Có 4 checkpoint:
   - [x] 4.3 Viết tests phát hiện mutation-after-commit
     - _Requirements: REQ-HARD-004_
 
-- [ ] 5. Đồng bộ execution identity và reproducibility
-  - [ ] 5.1 Tạo đúng một `ExperimentIdentity` cho mỗi CLI execution
+- [x] 5. Đồng bộ execution identity và reproducibility
+  - [x] 5.1 Tạo đúng một `ExperimentIdentity` cho mỗi CLI execution
     - Truyền identity xuyên suốt từ `run_cli()` vào train/eval handlers
     - _Requirements: REQ-HARD-005_
-  - [ ] 5.2 Tích hợp `reproducibility_key` vào runtime flow
+  - [x] 5.2 Tích hợp `reproducibility_key` vào runtime flow
     - Build từ `(config_hash, dataset_version, preprocessing_version, split_version, seed)`
     - _Requirements: REQ-HARD-006_
-  - [ ] 5.3 Ghi identity/repro metadata vào checkpoint + artifact + logs
+  - [x] 5.3 Ghi identity/repro metadata vào checkpoint + artifact + logs
     - _Requirements: REQ-HARD-005, REQ-HARD-006_
-  - [ ] 5.4 Mở rộng compatibility validation ở `CheckpointIO`
+  - [x] 5.4 Mở rộng compatibility validation ở `CheckpointIO`
     - _Requirements: REQ-HARD-006_
-  - [ ] 5.5 Viết integration tests cho identity consistency
+  - [x] 5.5 Viết integration tests cho identity consistency
     - CLI stdout run_id == checkpoint run_id == artifact run_id
     - _Requirements: REQ-HARD-005, REQ-HARD-006_
 
-- [ ] 6. Checkpoint 2 — Runtime contracts fail-closed
+- [x] 6. Checkpoint 2 — Runtime contracts fail-closed
   - Verify interaction runtime không còn silent contract violations
   - Verify state boundary quan trọng không bị mutate ngầm qua test
   - Verify run identity và reproducibility metadata nhất quán
