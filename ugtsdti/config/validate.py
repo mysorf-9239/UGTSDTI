@@ -354,7 +354,8 @@ class ConfigValidator:
         for mod_name in order:
             mod_cfg = interaction.get(mod_name, {})
             if isinstance(mod_cfg, dict):
-                if mod_cfg.get("enabled", True) is False:
+                params = _interaction_module_params(mod_cfg)
+                if params.get("enabled", True) is False:
                     continue
                 for k in mod_cfg.get("output_keys", []):
                     produced.add(k)
@@ -380,9 +381,9 @@ class ConfigValidator:
                 interaction = cfg.get("interaction", {})
                 order = interaction.get("order", [])
                 has_uncertainty = any(
-                    "uncertainty" in m
-                    or interaction.get(m, {}).get("type", "")
-                    and "uncertainty" in interaction.get(m, {}).get("type", "")
+                    isinstance(interaction.get(m, {}), dict)
+                    and _interaction_module_params(interaction.get(m, {})).get("enabled", True)
+                    and ("uncertainty" in m or "uncertainty" in interaction.get(m, {}).get("type", ""))
                     for m in order
                 )
                 if not has_uncertainty:
@@ -512,7 +513,7 @@ class ConfigValidator:
             mod_cfg = interaction.get(mod_name, {})
             if isinstance(mod_cfg, dict):
                 mod_type = mod_cfg.get("type", "")
-                enabled = mod_cfg.get("enabled", True)
+                enabled = _interaction_module_params(mod_cfg).get("enabled", True)
                 if ("kd" in mod_name or "kd" in mod_type) and enabled:
                     kd_enabled = True
                     break
@@ -574,7 +575,7 @@ class ConfigValidator:
             mod_cfg = interaction.get(mod_name, {})
             if isinstance(mod_cfg, dict):
                 mod_type = mod_cfg.get("type", "")
-                enabled = mod_cfg.get("enabled", True)
+                enabled = _interaction_module_params(mod_cfg).get("enabled", True)
                 if ("kd" in mod_name or "kd" in mod_type) and enabled:
                     kd_disabled = False
                     break
@@ -588,3 +589,13 @@ class ConfigValidator:
                     component="roles",
                     key="roles",
                 )
+
+
+def _interaction_module_params(mod_cfg: dict[str, Any]) -> dict[str, Any]:
+    """Merge flat interaction fields with nested runtime params."""
+    params = dict(mod_cfg.get("params", {}))
+    for key, value in mod_cfg.items():
+        if key in {"type", "type_key", "inputs", "dependencies", "params", "output_keys"}:
+            continue
+        params.setdefault(key, value)
+    return params

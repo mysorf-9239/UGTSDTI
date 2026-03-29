@@ -25,8 +25,9 @@ def diagnostics_output_keys(params: dict[str, Any]) -> list[str]:
 class DiagnosticsInteraction(InteractionRuntime):
     """Emit disagreement and simple calibration helper statistics."""
 
-    def __init__(self, *, emit_calibration: bool = True) -> None:
+    def __init__(self, *, emit_calibration: bool = True, enabled: bool = True) -> None:
         self._emit_calibration = emit_calibration
+        self._enabled = enabled
 
     def forward(
         self,
@@ -34,6 +35,8 @@ class DiagnosticsInteraction(InteractionRuntime):
         context: ExecutionContext,
     ) -> dict[str, Any]:
         del context
+        if not self._enabled:
+            return {}
         teacher_logits = inputs["teacher.logits"]
         student_logits = inputs["student.logits"]
 

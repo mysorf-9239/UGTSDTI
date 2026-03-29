@@ -68,7 +68,8 @@ def _estimate_variance(value: Any, *, sample_dim: int) -> Any:
         if tensor.ndim >= 3:
             variance = tensor.var(dim=sample_dim, unbiased=False)
         else:
-            variance = torch.zeros_like(tensor)
+            probs = torch.sigmoid(tensor)
+            variance = probs * (1.0 - probs)
         return variance.clamp_min(0.0)
     except ImportError as exc:
         raise RuntimeError("UncertaintyInteraction requires torch.") from exc

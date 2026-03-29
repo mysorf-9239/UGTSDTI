@@ -355,6 +355,14 @@ class TestDecisionPrerequisites:
         cfg = _full_teacher_student_cfg()
         assert_valid(cfg)
 
+    def test_use_uncertainty_with_disabled_module_in_params_fails(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["interaction"]["uncertainty"] = {
+            "type": "uncertainty.mc_dropout",
+            "params": {"enabled": False, "targets": {"teacher": True, "student": True}},
+        }
+        assert_invalid(cfg, "uncertainty")
+
     def test_no_use_uncertainty_without_module_passes(self):
         cfg = _minimal_student_only_cfg()
         cfg["decision"]["use_uncertainty"] = False
@@ -380,9 +388,11 @@ class TestLossMappings:
             "dependencies": {},
             "kd": {
                 "type": "kd.standard",
-                "temperature": 4.0,
-                "mode": "logits",
-                "enabled": False,
+                "params": {
+                    "temperature": 4.0,
+                    "mode": "logits",
+                    "enabled": False,
+                },
             },
         }
         cfg["loss"]["map"] = {"kd": {"from": "interaction.kd.loss_component", "weight": 0.3}}
@@ -453,9 +463,11 @@ class TestTeacherStudentAvailability:
             "dependencies": {},
             "kd": {
                 "type": "kd.standard",
-                "temperature": 4.0,
-                "mode": "logits",
-                "enabled": False,  # disabled
+                "params": {
+                    "temperature": 4.0,
+                    "mode": "logits",
+                    "enabled": False,
+                },
             },
         }
         assert_valid(cfg)

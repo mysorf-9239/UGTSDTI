@@ -209,6 +209,16 @@ class TestUncertaintyInteraction:
         assert torch.all(outputs["teacher.var"] >= 0)
         assert torch.all(outputs["student.var"] >= 0)
 
+    def test_uncertainty_for_plain_logits_is_not_forced_to_zero(self):
+        torch = pytest.importorskip("torch")
+        runtime = UncertaintyInteraction(targets={"teacher": True, "student": False})
+        outputs = runtime.forward(
+            {"teacher.logits": torch.tensor([[2.0], [0.0], [-2.0]])},
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert torch.any(outputs["teacher.var"] > 0)
+
     def test_uncertainty_supports_teacher_only_path(self):
         torch = pytest.importorskip("torch")
         runtime = UncertaintyInteraction(targets={"teacher": True, "student": False})
@@ -236,3 +246,11 @@ class TestDiagnosticsInteraction:
         assert outputs["interaction.disagreement"].item() >= 0.0
         assert 0.0 <= outputs["diagnostics.teacher_confidence"].item() <= 1.0
         assert 0.0 <= outputs["diagnostics.student_confidence"].item() <= 1.0
+
+    def test_diagnostics_supports_enabled_flag(self):
+        runtime = DiagnosticsInteraction(enabled=False)
+        outputs = runtime.forward(
+            {"teacher.logits": 1.0, "student.logits": 0.0},
+            ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
+        )
+        assert outputs == {}

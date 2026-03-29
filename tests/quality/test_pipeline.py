@@ -104,6 +104,7 @@ def _minimal_cfg():
         "interaction": interaction_cfg,
         "decision": {"type": "identity", "source_key": "student.logits"},
         "loss": {"type": "hard", "hard_weight": 1.0, "map": {}},
+        "metrics": {"enabled": ["f1"], "by_scenario": False},
     }
 
 
@@ -350,6 +351,7 @@ def test_disabled_kd_pipeline_uses_explicit_noop_path_without_hidden_outputs():
     assert not state.has("interaction.kd.loss_component")
     assert state.has("loss.total")
     assert state.has("loss.hard")
+    assert state.has("metrics.f1")
     assert trace.stage_order[-1] == "postprocess"
 
 
@@ -388,4 +390,5 @@ def test_uncertainty_driven_decision_pipeline_emits_gate_outputs():
     assert torch.all(torch.isfinite(state.get("teacher.var")))
     assert torch.all(torch.isfinite(state.get("student.var")))
     assert torch.all((state.get("gate.alpha") >= 0.0) & (state.get("gate.alpha") <= 1.0))
+    assert state.has("metrics.f1")
     assert trace.stage_order[-1] == "postprocess"

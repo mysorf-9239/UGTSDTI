@@ -18,6 +18,7 @@ from ugtsdti.decision.policy import DecisionPolicy
 from ugtsdti.decision.trust import TrustEstimator
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
 from ugtsdti.postprocess.loss import LossComposer
+from ugtsdti.postprocess.metrics import MetricsReporter
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
 
 
@@ -63,8 +64,12 @@ class PipelineExecutor:
         context: ExecutionContext,
     ) -> tuple[State, PipelineTrace]:
         state, writer, trace = self._run_core_pipeline(batch, cfg, context)
-        losses = LossComposer().compose(cfg.get("loss", {}), state, batch["labels"])
-        writer.commit("postprocess", losses)
+        outputs: dict[str, Any] = {}
+        outputs.update(LossComposer().compose(cfg.get("loss", {}), state, batch["labels"]))
+        metrics_cfg = cfg.get("metrics", {})
+        if metrics_cfg:
+            outputs.update(MetricsReporter().report(metrics_cfg, state, batch["labels"]))
+        writer.commit("postprocess", outputs)
         trace.stage_order.append("postprocess")
         trace.state_boundary_summaries["postprocess"] = state.keys()
         return state, trace

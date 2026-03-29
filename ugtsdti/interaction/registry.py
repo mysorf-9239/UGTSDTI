@@ -101,12 +101,13 @@ class InteractionPlanner:
             deps = dependencies_cfg.get(name, [])
             if isinstance(deps, str):
                 deps = [deps]
+            params = _resolve_module_params(module_cfg)
             definitions.append(
                 InteractionDefinition(
                     name=name,
                     type_key=type_key,
                     inputs=list(module_cfg.get("inputs", [])),
-                    params=dict(module_cfg.get("params", {})),
+                    params=params,
                     dependencies=list(deps),
                 )
             )
@@ -195,3 +196,13 @@ def _topological_sort(definitions: list[InteractionDefinition]) -> list[str]:
         )
 
     return ordered
+
+
+def _resolve_module_params(module_cfg: dict[str, Any]) -> dict[str, Any]:
+    """Merge explicit `params` with flat runtime fields for compatibility."""
+    params = dict(module_cfg.get("params", {}))
+    for key, value in module_cfg.items():
+        if key in {"type", "type_key", "inputs", "dependencies", "params"}:
+            continue
+        params.setdefault(key, value)
+    return params
