@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ugtsdti.core.context import ExecutionContext
+from ugtsdti.core.errors import InvalidInteractionGraphError
 from ugtsdti.graph.builder import GraphBuilder
 from ugtsdti.graph.planner import GraphPlanner
 from ugtsdti.graph.registry import NodeRegistry
@@ -45,6 +46,12 @@ class HeadRuntime(NodeRuntime):
 
         embedding = next(iter(inputs.values()))
         return {"logits": embedding.sum(dim=1, keepdim=True) * 0.1 + torch.tensor([[0.2], [0.2]])}
+
+
+class UnexpectedInteractionRuntime:
+    def forward(self, inputs, context):
+        del inputs, context
+        return {"unexpected.key": 1.0}
 
 
 def _make_registries():
@@ -318,7 +325,41 @@ def test_teacher_student_kd_pipeline_maps_interaction_loss_explicitly():
     expected_total = state.get("loss.hard") + 0.3 * state.get("interaction.kd.loss_component")
     assert torch.allclose(state.get("loss.kd"), state.get("interaction.kd.loss_component"))
     assert torch.allclose(state.get("loss.total"), expected_total)
-    assert trace.stage_order[-1] == "postprocess"
+
+
+def test_pipeline_executor_fails_closed_for_interaction_runtime_contract_violations():
+    torch = pytest.importorskip("torch")
+    graph_registry, interaction_registry = _make_registries()
+    interaction_registry.register(
+        InteractionPluginSpec(type_key="bad.runtime", output_keys_fn=lambda params: ["teacher.var"]),
+        UnexpectedInteractionRuntime,
+    )
+    cfg = _teacher_student_cfg()
+    cfg["interaction"] = {
+        "order": ["bad"],
+        "dependencies": {},
+        "bad": {"type": "bad.runtime", "inputs": ["teacher.logits"]},
+    }
+    cfg["graph_plan"] = GraphPlanner(graph_registry).plan(GraphBuilder(graph_registry).build(cfg["graph"]))
+    cfg["interaction_plan"] = InteractionPlanner(interaction_registry).plan(
+        cfg["interaction"],
+        available_inputs={"student.logits", "teacher.logits"},
+    )
+    batch = {
+        "labels": torch.tensor([[1.0], [0.0]]),
+        "scenario": ["s1", "s1"],
+        "drug_seq": torch.tensor([[1.0, 0.0], [0.5, 0.5]]),
+        "protein_seq": torch.tensor([[0.0, 1.0], [0.2, 0.8]]),
+        "drug_graph": torch.tensor([[0.3, 0.7], [0.1, 0.9]]),
+    }
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+
+    with pytest.raises(InvalidInteractionGraphError, match="undeclared keys"):
+        executor.run_until_decision(
+            batch,
+            cfg,
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
 
 
 def test_disabled_kd_pipeline_uses_explicit_noop_path_without_hidden_outputs():

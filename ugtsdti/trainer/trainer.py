@@ -19,6 +19,7 @@ from ugtsdti.decision.module import (
 from ugtsdti.decision.policy import DecisionPolicy
 from ugtsdti.decision.trust import TrustEstimator
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
+from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.logging.base import Logger
 from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.postprocess.metrics import MetricsReporter
@@ -66,6 +67,7 @@ class PipelineExecutor:
         self._strict_mode = strict_mode
         self._schema_builder = StateSchemaBuilder()
         self._graph_engine = GraphEngine(self._graph_registry, debug=self._debug, strict_mode=self._strict_mode)
+        self._interaction_engine = InteractionEngine(self._interaction_registry)
 
     def run_until_decision(
         self,
@@ -167,15 +169,12 @@ class PipelineExecutor:
         cfg: dict[str, Any],
         context: ExecutionContext,
     ) -> None:
-        interaction_plan = cfg["interaction_plan"]
-        definition_map = interaction_plan.definition_map()
-        for name in interaction_plan.order:
-            definition = definition_map[name]
-            runtime = self._interaction_registry.build_runtime(definition)
-            inputs = {key: state.get(key) for key in definition.inputs if state.has(key)}
-            outputs = runtime.forward(inputs, context)
-            if outputs:
-                writer.commit(f"interaction.{name}", outputs)
+        self._interaction_engine.run(
+            cfg["interaction_plan"],
+            state=state,
+            writer=writer,
+            context=context,
+        )
 
     def _build_decision_module(self, cfg: dict[str, Any]) -> DecisionModule:
         decision_cfg = cfg.get("decision", {})

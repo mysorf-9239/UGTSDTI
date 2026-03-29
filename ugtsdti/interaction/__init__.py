@@ -7,6 +7,7 @@ from ugtsdti.interaction.base import (
     InteractionRuntime,
 )
 from ugtsdti.interaction.diagnostics import DiagnosticsInteraction, diagnostics_output_keys
+from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.interaction.kd import KDInteraction, binary_logits_to_dist, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
@@ -17,6 +18,7 @@ __all__ = [
     "InteractionDefinition",
     "InteractionPlan",
     "InteractionRuntime",
+    "InteractionEngine",
     "KDInteraction",
     "binary_logits_to_dist",
     "kd_output_keys",

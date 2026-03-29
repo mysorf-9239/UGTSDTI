@@ -8,8 +8,10 @@ import pytest
 
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import InvalidInteractionGraphError, MissingDependencyError
+from ugtsdti.core.state import State, StateWriter
 from ugtsdti.interaction.base import InteractionPluginSpec, InteractionRuntime
 from ugtsdti.interaction.diagnostics import DiagnosticsInteraction, diagnostics_output_keys
+from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.interaction.kd import KDInteraction, binary_logits_to_dist, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
@@ -26,6 +28,16 @@ def _make_registry(*specs):
     for spec in specs:
         registry.register(spec, _StubRuntime)
     return registry
+
+
+class _MissingOutputRuntime(InteractionRuntime):
+    def forward(self, inputs, context):
+        return {}
+
+
+class _UnexpectedOutputRuntime(InteractionRuntime):
+    def forward(self, inputs, context):
+        return {"teacher.var": 0.1, "unexpected.key": 0.2}
 
 
 NOOP_SPEC = InteractionPluginSpec(type_key="noop", output_keys_fn=lambda params: [])
@@ -115,6 +127,87 @@ class TestNoOpInteraction:
             ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
         )
         assert outputs == {}
+
+
+class TestInteractionEngine:
+    def test_runtime_missing_declared_key_fails_closed(self):
+        registry = InteractionRegistry()
+        registry.register(
+            InteractionPluginSpec(type_key="var", output_keys_fn=lambda params: ["teacher.var"]),
+            _MissingOutputRuntime,
+        )
+        plan = InteractionPlanner(registry).plan(
+            {
+                "order": ["var"],
+                "dependencies": {},
+                "var": {"type": "var", "inputs": ["teacher.logits"]},
+            },
+            available_inputs={"teacher.logits"},
+        )
+        state = State()
+        writer = StateWriter(state)
+        writer.commit("batch", {"teacher.logits": 1.0})
+
+        with pytest.raises(InvalidInteractionGraphError, match="did not produce required keys"):
+            InteractionEngine(registry).run(
+                plan,
+                state=state,
+                writer=writer,
+                context=ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+            )
+
+    def test_runtime_unexpected_key_fails_closed(self):
+        registry = InteractionRegistry()
+        registry.register(
+            InteractionPluginSpec(type_key="var", output_keys_fn=lambda params: ["teacher.var"]),
+            _UnexpectedOutputRuntime,
+        )
+        plan = InteractionPlanner(registry).plan(
+            {
+                "order": ["var"],
+                "dependencies": {},
+                "var": {"type": "var", "inputs": ["teacher.logits"]},
+            },
+            available_inputs={"teacher.logits"},
+        )
+        state = State()
+        writer = StateWriter(state)
+        writer.commit("batch", {"teacher.logits": 1.0})
+
+        with pytest.raises(InvalidInteractionGraphError, match="undeclared keys"):
+            InteractionEngine(registry).run(
+                plan,
+                state=state,
+                writer=writer,
+                context=ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+            )
+
+    def test_disabled_runtime_path_matches_empty_contract(self):
+        registry = InteractionRegistry()
+        registry.register(
+            InteractionPluginSpec(type_key="noop", output_keys_fn=lambda params: []),
+            NoOpInteraction,
+        )
+        plan = InteractionPlanner(registry).plan(
+            {
+                "order": ["noop"],
+                "dependencies": {},
+                "noop": {"type": "noop", "inputs": ["student.logits"], "params": {"enabled": False}},
+            },
+            available_inputs={"student.logits"},
+        )
+        state = State()
+        writer = StateWriter(state)
+        writer.commit("batch", {"student.logits": 1.0})
+
+        InteractionEngine(registry).run(
+            plan,
+            state=state,
+            writer=writer,
+            context=ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert state.keys() == ["student.logits"]
 
 
 class TestKDInteraction:

@@ -55,17 +55,17 @@ Có 4 checkpoint:
   - Verify loader/runtime đọc được artifacts mới
   - _Requirements: REQ-HARD-001, REQ-HARD-002_
 
-- [ ] 3. Siết interaction runtime contracts
-  - [ ] 3.1 Thêm runtime output validation cho interaction stage
+- [x] 3. Siết interaction runtime contracts
+  - [x] 3.1 Thêm runtime output validation cho interaction stage
     - Reject undeclared keys
     - Reject missing expected keys
     - Commit chỉ khi contract hợp lệ
     - _Requirements: REQ-HARD-003_
-  - [ ] 3.2 Refactor `_run_interactions()` trong `PipelineExecutor`
+  - [x] 3.2 Refactor `_run_interactions()` trong `PipelineExecutor`
     - Tách thành `InteractionEngine` riêng hoặc helper có validation rõ
     - Reuse `interaction_plan.produced_keys`
     - _Requirements: REQ-HARD-003_
-  - [ ] 3.3 Viết unit tests cho interaction contract enforcement
+  - [x] 3.3 Viết unit tests cho interaction contract enforcement
     - Runtime trả thiếu key
     - Runtime trả thừa key
     - Runtime disabled path đúng contract
