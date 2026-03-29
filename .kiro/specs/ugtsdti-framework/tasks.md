@@ -329,29 +329,29 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test NaN trong batch → explicit error
     - _Requirements: REQ-DATA-004, REQ-QUAL-001_
 
-- [ ] 16. Xây dựng runtime và logging/ — Seed, Identity, Adapter, Checkpoint, Loggers
-  - [ ] 16.1 Triển khai seed management trong `ugtsdti/runtime/seed.py`
+- [x] 16. Xây dựng runtime và logging/ — Seed, Identity, Adapter, Checkpoint, Loggers
+  - [x] 16.1 Triển khai seed management trong `ugtsdti/runtime/seed.py`
     - Set Python, NumPy, torch seeds; deterministic algorithm toggle; worker-specific seeding
     - Log assumption về cross-platform reproducibility
     - _Requirements: REQ-REPRO-001_
-  - [ ] 16.2 Triển khai `ExperimentIdentity` và reproducibility-key helpers trong `ugtsdti/runtime/identity.py`
+  - [x] 16.2 Triển khai `ExperimentIdentity` và reproducibility-key helpers trong `ugtsdti/runtime/identity.py`
     - `ExperimentIdentity`: `run_id`, `config_hash`, `git_commit`, `timestamp`
     - Tách rõ `unique run identity` khỏi reproducibility tuple `(config_hash, dataset_version, preprocessing_version, split_version, seed)`
     - _Requirements: REQ-REPRO-002_
-  - [ ] 16.3 Triển khai `RuntimeAdapter` trong `ugtsdti/runtime/adapter.py`
+  - [x] 16.3 Triển khai `RuntimeAdapter` trong `ugtsdti/runtime/adapter.py`
     - Điều chỉnh operational knobs: dataloader kwargs, artifact/checkpoint dirs, debug defaults
     - MUST NOT thay đổi graph/role/interaction/loss semantics
     - _Requirements: REQ-OPS-003_
-  - [ ] 16.4 Triển khai `CheckpointBundle` và checkpoint I/O trong `ugtsdti/runtime/checkpoint.py`
+  - [x] 16.4 Triển khai `CheckpointBundle` và checkpoint I/O trong `ugtsdti/runtime/checkpoint.py`
     - Bundle: model state, optimizer state, scheduler state, RNG state, epoch/step, identity, config, dataset/split metadata
     - Atomic write (temp-then-rename)
     - Resume: validate integrity → validate config compatibility → restore RNG
     - _Requirements: REQ-QUAL-003_
-  - [ ] 16.5 Viết unit tests cho checkpoint resume validation
+  - [x] 16.5 Viết unit tests cho checkpoint resume validation
     - Test corrupt bundle → `CheckpointCorruptedError`
     - Test config mismatch hoặc thiếu dataset/split metadata → explicit error
     - _Requirements: REQ-QUAL-003_
-  - [ ] 16.6 Triển khai logging abstraction trong `ugtsdti/logging/`
+  - [x] 16.6 Triển khai logging abstraction trong `ugtsdti/logging/`
     - `Logger` abstract interface trong `base.py`
     - `FileLogger` offline-capable trong `file_logger.py`
     - `WandbLogger` với fallback policy trong `wandb_logger.py`
