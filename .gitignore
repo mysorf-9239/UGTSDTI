@@ -82,3 +82,5 @@ configs/sweep_outputs/
 
 # Experiment artifacts (gitignore but keep structure)
 artifacts/
+
+*/.DS_store/

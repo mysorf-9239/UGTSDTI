@@ -45,24 +45,24 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - **Property 1: build_for_experiment với cùng config luôn trả về schema tương đương**
     - **Validates: REQ-STATE-004, REQ-CONF-003**
 
-- [~] 2. Xây dựng config/ — Loader, Validator, Normalizer, Models
-  - [ ] 2.1 Triển khai `NormalizedConfig` dataclass trong `ugtsdti/config/models.py`
+- [x] 2. Xây dựng config/ — Loader, Validator, Normalizer, Models
+  - [x] 2.1 Triển khai `NormalizedConfig` dataclass trong `ugtsdti/config/models.py`
     - Tất cả top-level sections từ design Section 7.2
     - _Requirements: REQ-CONF-001_
-  - [ ] 2.2 Triển khai `ConfigLoader` trong `ugtsdti/config/loader.py`
+  - [x] 2.2 Triển khai `ConfigLoader` trong `ugtsdti/config/loader.py`
     - Load YAML, resolve `extends` deterministically
     - _Requirements: REQ-CONF-001, REQ-CONF-003_
-  - [ ] 2.3 Triển khai `ConfigValidator` trong `ugtsdti/config/validate.py`
+  - [x] 2.3 Triển khai `ConfigValidator` trong `ugtsdti/config/validate.py`
     - Required-section validation → schema validation → cross-section validation
     - Cross-section checks: roles → graph outputs, interaction acyclic, decision prerequisites, loss mappings, modality compatibility, teacher/student availability
     - Validate stable naming và reserved namespaces trước runtime
     - Fail fast với lỗi mô tả rõ vi phạm
     - _Requirements: REQ-CONF-002, REQ-ARCH-002, REQ-ARCH-004_
-  - [ ] 2.4 Viết unit tests cho cross-section validation
+  - [x] 2.4 Viết unit tests cho cross-section validation
     - Test từng cross-section rule với config vi phạm
     - Test baseline no-op path hợp lệ khi teacher/KD/uncertainty bị disable
     - _Requirements: REQ-CONF-002_
-  - [ ] 2.5 Triển khai `ConfigNormalizer` trong `ugtsdti/config/normalize.py`
+  - [x] 2.5 Triển khai `ConfigNormalizer` trong `ugtsdti/config/normalize.py`
     - Normalize → `NormalizedConfig`; idempotent; serializable; stable để hash
     - Không tự ý di chuyển component giữa stage hoặc suy luận hidden loss mappings
     - _Requirements: REQ-CONF-003_
