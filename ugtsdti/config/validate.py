@@ -354,6 +354,8 @@ class ConfigValidator:
         for mod_name in order:
             mod_cfg = interaction.get(mod_name, {})
             if isinstance(mod_cfg, dict):
+                if mod_cfg.get("enabled", True) is False:
+                    continue
                 for k in mod_cfg.get("output_keys", []):
                     produced.add(k)
                 # Well-known outputs by type

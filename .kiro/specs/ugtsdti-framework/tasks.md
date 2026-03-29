@@ -233,7 +233,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - **Property 9: uncertainty outputs luôn finite và non-negative với mọi valid input**
     - **Validates: REQ-INT-002, REQ-INT-003, REQ-QUAL-002**
 
-- [ ] 11. Checkpoint 3 — KD interaction hoạt động end-to-end
+- [x] 11. Checkpoint 3 — KD interaction hoạt động end-to-end
   - Wire KD module vào interaction stage với teacher → student direction
   - Verify `interaction.kd.loss_component` được emit và map vào loss config
   - Verify teacher absent hoặc KD disabled đi qua explicit config path thay vì hidden behavior

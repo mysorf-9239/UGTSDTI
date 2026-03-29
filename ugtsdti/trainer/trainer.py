@@ -10,6 +10,7 @@ from ugtsdti.core.schema import StateSchemaBuilder
 from ugtsdti.core.state import State, StateWriter
 from ugtsdti.decision.module import IdentityDecisionModule
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
+from ugtsdti.postprocess.loss import LossComposer
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
 
 
@@ -45,6 +46,28 @@ class PipelineExecutor:
         cfg: dict[str, Any],
         context: ExecutionContext,
     ) -> tuple[State, PipelineTrace]:
+        state, _, trace = self._run_core_pipeline(batch, cfg, context)
+        return state, trace
+
+    def run_batch(
+        self,
+        batch: dict[str, Any],
+        cfg: dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple[State, PipelineTrace]:
+        state, writer, trace = self._run_core_pipeline(batch, cfg, context)
+        losses = LossComposer().compose(cfg.get("loss", {}), state, batch["labels"])
+        writer.commit("postprocess", losses)
+        trace.stage_order.append("postprocess")
+        trace.state_boundary_summaries["postprocess"] = state.keys()
+        return state, trace
+
+    def _run_core_pipeline(
+        self,
+        batch: dict[str, Any],
+        cfg: dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple[State, StateWriter, PipelineTrace]:
         state = State()
         writer = StateWriter(state)
         trace = PipelineTrace(
@@ -71,7 +94,7 @@ class PipelineExecutor:
         writer.commit("decision", decision.forward(state, context))
         trace.state_boundary_summaries["decision"] = state.keys()
 
-        return state, trace
+        return state, writer, trace
 
     def _validate_batch(self, batch: dict[str, Any], cfg: dict[str, Any]) -> None:
         batch_spec = self._schema_builder.build_batch_spec(cfg)

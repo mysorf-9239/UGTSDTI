@@ -373,6 +373,21 @@ class TestLossMappings:
         # No KD module configured, so interaction.kd.loss_component is not produced
         assert_invalid(cfg, "interaction.kd.loss_component")
 
+    def test_loss_map_referencing_disabled_kd_output_fails(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["interaction"] = {
+            "order": ["kd"],
+            "dependencies": {},
+            "kd": {
+                "type": "kd.standard",
+                "temperature": 4.0,
+                "mode": "logits",
+                "enabled": False,
+            },
+        }
+        cfg["loss"]["map"] = {"kd": {"from": "interaction.kd.loss_component", "weight": 0.3}}
+        assert_invalid(cfg, "interaction.kd.loss_component")
+
     def test_loss_map_empty_passes(self):
         cfg = _minimal_student_only_cfg()
         cfg["loss"]["map"] = {}

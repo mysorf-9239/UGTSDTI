@@ -10,7 +10,8 @@ from ugtsdti.interaction.base import InteractionRuntime
 
 def kd_output_keys(params: dict[str, Any]) -> list[str]:
     """Return stable output keys for the configured KD module."""
-    del params
+    if params.get("enabled", True) is False:
+        return []
     return [
         "interaction.kd.loss_component",
         "kd.teacher_target",

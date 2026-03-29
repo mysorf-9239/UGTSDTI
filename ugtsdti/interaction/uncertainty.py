@@ -9,6 +9,8 @@ from ugtsdti.interaction.base import InteractionRuntime
 
 def uncertainty_output_keys(params: dict[str, Any]) -> list[str]:
     """Return uncertainty keys for the enabled targets."""
+    if params.get("enabled", True) is False:
+        return []
     targets = params.get("targets", {})
     if not isinstance(targets, dict):
         targets = {}

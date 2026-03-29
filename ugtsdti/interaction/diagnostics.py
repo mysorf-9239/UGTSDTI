@@ -9,6 +9,8 @@ from ugtsdti.interaction.base import InteractionRuntime
 
 def diagnostics_output_keys(params: dict[str, Any]) -> list[str]:
     """Return diagnostics keys emitted by the module."""
+    if params.get("enabled", True) is False:
+        return []
     keys = ["interaction.disagreement"]
     if params.get("emit_calibration", True):
         keys.extend(
