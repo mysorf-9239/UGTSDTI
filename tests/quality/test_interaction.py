@@ -180,6 +180,24 @@ class TestKDInteraction:
         expected_teacher = binary_logits_to_dist(teacher_logits, temperature=1.0)
         assert torch.allclose(outputs["kd.teacher_target"], expected_teacher)
 
+    @given(
+        logits=st.lists(
+            st.floats(min_value=-20, max_value=20, allow_nan=False, allow_infinity=False),
+            min_size=1,
+            max_size=8,
+        ),
+        temperature=st.floats(min_value=0.1, max_value=10.0, allow_nan=False, allow_infinity=False),
+    )
+    def test_binary_logits_distribution_property(self, logits, temperature):
+        torch = pytest.importorskip("torch")
+        tensor = torch.tensor([[value] for value in logits], dtype=torch.float32)
+
+        dist = binary_logits_to_dist(tensor, temperature=temperature)
+
+        assert torch.all(dist >= 0)
+        assert torch.all(torch.isfinite(dist))
+        assert torch.allclose(dist.sum(dim=-1), torch.ones(dist.shape[0]))
+
 
 class TestUncertaintyInteraction:
     def test_uncertainty_outputs_are_finite_and_non_negative(self):
@@ -230,6 +248,33 @@ class TestUncertaintyInteraction:
         )
 
         assert set(outputs) == {"teacher.var"}
+
+    @given(
+        teacher_logits=st.lists(
+            st.floats(min_value=-20, max_value=20, allow_nan=False, allow_infinity=False),
+            min_size=1,
+            max_size=6,
+        ),
+        student_logits=st.lists(
+            st.floats(min_value=-20, max_value=20, allow_nan=False, allow_infinity=False),
+            min_size=1,
+            max_size=6,
+        ),
+    )
+    def test_uncertainty_outputs_property_for_valid_logits(self, teacher_logits, student_logits):
+        torch = pytest.importorskip("torch")
+        teacher = torch.tensor([[value] for value in teacher_logits], dtype=torch.float32)
+        student = torch.tensor([[value] for value in student_logits], dtype=torch.float32)
+        runtime = UncertaintyInteraction(targets={"teacher": True, "student": True})
+
+        outputs = runtime.forward(
+            {"teacher.logits": teacher, "student.logits": student},
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        for key in ("teacher.var", "student.var"):
+            assert torch.all(torch.isfinite(outputs[key]))
+            assert torch.all(outputs[key] >= 0)
 
 
 class TestDiagnosticsInteraction:

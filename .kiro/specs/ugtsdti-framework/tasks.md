@@ -228,7 +228,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Emit: `interaction.disagreement` và calibration helper stats
     - Ownership explicit, output keys stable
     - _Requirements: REQ-POST-002, REQ-ARCH-004_
-  - [ ]* 10.6 Viết property tests cho KD/uncertainty hardening
+  - [x]* 10.6 Viết property tests cho KD/uncertainty hardening
     - **Property 8: KD logits mode luôn trả về distribution sum=1, non-negative với mọi finite logits**
     - **Property 9: uncertainty outputs luôn finite và non-negative với mọi valid input**
     - **Validates: REQ-INT-002, REQ-INT-003, REQ-QUAL-002**
@@ -259,7 +259,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test uncertainty unavailable → configured fallback
     - Test invalid alpha range hoặc malformed `gate.*` outputs bị reject
     - _Requirements: REQ-DEC-002, REQ-ARCH-004, REQ-QUAL-002_
-  - [ ]* 12.5 Viết property test cho alpha constraints
+  - [x]* 12.5 Viết property test cho alpha constraints
     - **Property 10: `SoftBlendingDecisionModule` luôn emit `gate.alpha` trong [0, 1] và finite**
     - **Validates: REQ-DEC-002**
 
