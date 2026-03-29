@@ -8,6 +8,7 @@ from typing import Any
 from ugtsdti.core.errors import ProcessedSplitMismatchError
 from ugtsdti.core.schema import BatchSpec, StateSchemaBuilder
 from ugtsdti.data.contracts import DatasetVersion, SplitManifest
+from ugtsdti.data.validate import DataValidator
 
 
 class DataLoaderFactory:
@@ -21,19 +22,23 @@ class DataLoaderFactory:
         split_manifest_path: str | Path,
         batch_size: int = 32,
         scenarios: list[str] | None = None,
+        partition: str = "test",
     ) -> tuple[list[dict[str, Any]], BatchSpec, DatasetVersion, SplitManifest]:
-        dataset_version = DatasetVersion.from_dict(json.loads(Path(dataset_version_path).read_text(encoding="utf-8")))
-        manifest = SplitManifest.from_dict(json.loads(Path(split_manifest_path).read_text(encoding="utf-8")))
+        dataset_version, manifest = DataValidator().validate_artifacts(
+            dataset_version_path=dataset_version_path,
+            split_manifest_path=split_manifest_path,
+        )
         selected_scenarios = list(scenarios or manifest.scenarios)
         records: list[dict[str, Any]] = []
         for scenario in selected_scenarios:
-            split_path = manifest.split_paths.get(scenario)
+            partitions = manifest.scenario_partitions.get(scenario, {})
+            split_path = partitions.get(partition)
             if split_path is None:
                 raise ProcessedSplitMismatchError(
-                    f"Requested scenario {scenario!r} is not present in the split manifest.",
+                    f"Requested scenario {scenario!r} partition {partition!r} is not present in the split manifest.",
                     stage="data",
                     component="DataLoaderFactory",
-                    key=scenario,
+                    key=f"{scenario}.{partition}",
                 )
             records.extend(_read_jsonl(Path(split_path)))
         batches = [_collate(records[index : index + batch_size]) for index in range(0, len(records), batch_size)]

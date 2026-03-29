@@ -52,14 +52,16 @@ class DataValidator:
                 component="DataValidator",
                 key="preprocessing_version",
             )
-        for scenario, path in manifest.split_paths.items():
-            if not Path(path).exists():
-                raise ProcessedSplitMismatchError(
-                    f"Split artifact for scenario {scenario!r} is missing: {path}",
-                    stage="data",
-                    component="DataValidator",
-                    key=scenario,
-                )
+        for scenario, partitions in manifest.scenario_partitions.items():
+            for partition, path in partitions.items():
+                if not Path(path).exists():
+                    raise ProcessedSplitMismatchError(
+                        f"Split artifact for scenario {scenario!r} partition {partition!r} is missing: {path}",
+                        stage="data",
+                        component="DataValidator",
+                        key=f"{scenario}.{partition}",
+                    )
+        self._validate_leakage(manifest)
         return dataset_version, manifest
 
     def validate_batch(self, batch: dict[str, Any], batch_spec: BatchSpec) -> None:
@@ -81,6 +83,121 @@ class DataValidator:
                 )
         for key, value in batch.items():
             _ensure_finite(key, value)
+
+    def _validate_leakage(self, manifest: SplitManifest) -> None:
+        for scenario in manifest.scenarios:
+            partitions = manifest.scenario_partitions.get(scenario, {})
+            train_rows = _read_rows(partitions.get("train"))
+            val_rows = _read_rows(partitions.get("val"))
+            test_rows = _read_rows(partitions.get("test"))
+            eval_rows = val_rows + test_rows
+
+            _ensure_no_overlap(
+                scenario=scenario,
+                invariant="pair",
+                left_partition="train",
+                right_partition="eval",
+                left_rows=train_rows,
+                right_rows=eval_rows,
+                identity_fn=_pair_identity,
+            )
+            if scenario == "s2":
+                _ensure_no_overlap(
+                    scenario=scenario,
+                    invariant="drug",
+                    left_partition="train",
+                    right_partition="eval",
+                    left_rows=train_rows,
+                    right_rows=eval_rows,
+                    identity_fn=_drug_identity,
+                )
+            if scenario == "s3":
+                _ensure_no_overlap(
+                    scenario=scenario,
+                    invariant="target",
+                    left_partition="train",
+                    right_partition="eval",
+                    left_rows=train_rows,
+                    right_rows=eval_rows,
+                    identity_fn=_target_identity,
+                )
+            if scenario == "s4":
+                _ensure_no_overlap(
+                    scenario=scenario,
+                    invariant="drug",
+                    left_partition="train",
+                    right_partition="eval",
+                    left_rows=train_rows,
+                    right_rows=eval_rows,
+                    identity_fn=_drug_identity,
+                )
+                _ensure_no_overlap(
+                    scenario=scenario,
+                    invariant="target",
+                    left_partition="train",
+                    right_partition="eval",
+                    left_rows=train_rows,
+                    right_rows=eval_rows,
+                    identity_fn=_target_identity,
+                )
+            _ensure_no_overlap(
+                scenario=scenario,
+                invariant="pair",
+                left_partition="val",
+                right_partition="test",
+                left_rows=val_rows,
+                right_rows=test_rows,
+                identity_fn=_pair_identity,
+            )
+
+
+def _read_rows(path: str | None) -> list[dict[str, Any]]:
+    if not path:
+        return []
+    with Path(path).open("r", encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def _ensure_no_overlap(
+    *,
+    scenario: str,
+    invariant: str,
+    left_partition: str,
+    right_partition: str,
+    left_rows: list[dict[str, Any]],
+    right_rows: list[dict[str, Any]],
+    identity_fn: Any,
+) -> None:
+    left_ids = {str(identity_fn(row)) for row in left_rows}
+    right_ids = {str(identity_fn(row)) for row in right_rows}
+    overlap = sorted(left_ids & right_ids)
+    if overlap:
+        sample = ", ".join(overlap[:5])
+        raise ProcessedSplitMismatchError(
+            f"Leakage detected for {scenario} on {invariant} between {left_partition} and {right_partition}: {sample}",
+            stage="data",
+            component="DataValidator",
+            key=f"{scenario}.{invariant}",
+            debug_payload={
+                "scenario": scenario,
+                "invariant": invariant,
+                "left_partition": left_partition,
+                "right_partition": right_partition,
+                "offending_ids": overlap,
+            },
+        )
+
+
+def _drug_identity(row: dict[str, Any]) -> str:
+    return str(row.get("drug_id", row.get("drug", row.get("drug_seq", ""))))
+
+
+def _target_identity(row: dict[str, Any]) -> str:
+    return str(row.get("protein_id", row.get("target", row.get("protein_seq", ""))))
+
+
+def _pair_identity(row: dict[str, Any]) -> str:
+    return f"{_drug_identity(row)}::{_target_identity(row)}"
 
 
 def _ensure_finite(key: str, value: Any) -> None:

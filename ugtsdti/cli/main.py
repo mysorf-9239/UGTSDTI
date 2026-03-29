@@ -13,7 +13,7 @@ from ugtsdti.config.normalize import ConfigNormalizer
 from ugtsdti.config.validate import ConfigValidator
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import UGTSDTIError
-from ugtsdti.data.validate import DataValidator
+from ugtsdti.data import DataLoaderFactory
 from ugtsdti.graph.builder import GraphBuilder
 from ugtsdti.graph.planner import GraphPlanner
 from ugtsdti.interaction.registry import InteractionPlanner
@@ -153,7 +153,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> No
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     context = _build_context(runtime_state, mode="train")
     train_scenario = str(runtime_cfg.get("scenario", {}).get("train", "s1"))
-    batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=[train_scenario])
+    batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=[train_scenario], partition="train")
     identity = build_experiment_identity(cfg)
     logs_dir = _logs_dir(runtime_state, identity.run_id)
     logger = _build_logger(cfg, logs_dir)
@@ -205,7 +205,7 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> Non
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     context = _build_context(runtime_state, mode="eval")
     eval_scenarios = list(runtime_cfg.get("scenario", {}).get("eval", []))
-    batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios)
+    batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios, partition="test")
     identity = build_experiment_identity(cfg)
     logs_dir = _logs_dir(runtime_state, identity.run_id)
     logger = _build_logger(cfg, logs_dir)
@@ -318,6 +318,7 @@ def _load_batches(
     runtime_state: dict[str, Any],
     *,
     scenarios: list[str],
+    partition: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     data_cfg = dict(cfg.get("data", {}))
     dataset = str(data_cfg.get("dataset", "dataset"))
@@ -326,54 +327,28 @@ def _load_batches(
     data_root = Path(runtime_state["data_dir"])
     dataset_version_path = data_root / "processed" / dataset / preprocessing_version / "dataset_version.json"
     split_manifest_path = data_root / "splits" / dataset / preprocessing_version / split_version / "manifest.json"
-
-    dataset_version, manifest = DataValidator().validate_artifacts(
+    batch_size = int(runtime_state.get("batch_size", 32))
+    raw_batches, _, dataset_version, manifest = DataLoaderFactory().build(
+        cfg=cfg,
         dataset_version_path=dataset_version_path,
         split_manifest_path=split_manifest_path,
+        batch_size=batch_size,
+        scenarios=scenarios,
+        partition=partition,
     )
-    batch_size = int(runtime_state.get("batch_size", 32))
-    rows = _load_split_rows(manifest.split_paths, scenarios)
-    batches = [
-        _tensorize_batch(_collate_rows(rows[index : index + batch_size])) for index in range(0, len(rows), batch_size)
-    ]
-    split_manifest = manifest.to_dict()
-    split_manifest["dataset_version"] = dataset_version.to_dict()
-    split_manifest["selected_scenarios"] = list(scenarios)
-    return batches, split_manifest
-
-
-def _load_split_rows(split_paths: dict[str, str], scenarios: list[str]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for scenario in scenarios:
-        path = split_paths.get(scenario)
-        if not path:
-            raise UGTSDTIError(
-                f"Scenario {scenario!r} is not available in the split manifest.",
-                stage="cli",
-                component="main",
-                key=scenario,
-            )
-        with Path(path).open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    rows.append(json.loads(line))
-    if not rows:
+    batches = [_tensorize_batch(batch) for batch in raw_batches]
+    if not batches:
         raise UGTSDTIError(
             "No materialized rows were loaded for the requested scenarios.",
             stage="cli",
             component="main",
-            key="data",
+            key=f"data.{partition}",
         )
-    return rows
-
-
-def _collate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        return {}
-    batch: dict[str, Any] = {}
-    for key in rows[0]:
-        batch[key] = [row.get(key) for row in rows]
-    return batch
+    split_manifest = manifest.to_dict()
+    split_manifest["dataset_version"] = dataset_version.to_dict()
+    split_manifest["selected_scenarios"] = list(scenarios)
+    split_manifest["selected_partition"] = partition
+    return batches, split_manifest
 
 
 def _tensorize_batch(batch: dict[str, Any]) -> dict[str, Any]:

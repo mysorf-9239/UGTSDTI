@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import yaml
 
@@ -47,6 +48,45 @@ def _valid_cfg() -> dict:
         "loss": {"type": "hard", "hard_weight": 1.0, "map": {}},
         "sweep": {"parameters": {"decision.strategy": ["identity", "soft"]}},
     }
+
+
+def _write_partition_manifest(
+    base_dir: Path,
+    *,
+    train_rows: list[dict[str, object]],
+    test_rows: list[dict[str, object]] | None = None,
+) -> None:
+    scenario_dir = base_dir / "s1"
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    val_rows: list[dict[str, object]] = []
+    test_payload = list(test_rows or [])
+    for partition, rows in (("train", train_rows), ("val", val_rows), ("test", test_payload)):
+        path = scenario_dir / f"{partition}.jsonl"
+        payload = "\n".join(json.dumps(row, sort_keys=True) for row in rows)
+        path.write_text((payload + "\n") if payload else "", encoding="utf-8")
+    (base_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "preprocessing_version": "v1",
+                "split_version": "s1_v1",
+                "seed": 7,
+                "scenarios": ["s1"],
+                "partitions": ["train", "val", "test"],
+                "scenario_partitions": {
+                    "s1": {
+                        "train": str(scenario_dir / "train.jsonl"),
+                        "val": str(scenario_dir / "val.jsonl"),
+                        "test": str(scenario_dir / "test.jsonl"),
+                    }
+                },
+                "counts": {"s1": {"train": len(train_rows), "val": 0, "test": len(test_payload)}},
+                "protocol_report": {"protocol_version": "cold-start.v2"},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_cli_validate_invalid_config_fails_fast(tmp_path):
@@ -134,26 +174,12 @@ def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
         ),
         encoding="utf-8",
     )
-    split_path = records_dir / "s1.jsonl"
-    split_path.write_text(
-        '{"drug_seq":"AA","protein_seq":"MK","labels":1.0,"scenario":"s1"}\n'
-        '{"drug_seq":"BB","protein_seq":"ML","labels":0.0,"scenario":"s1"}\n',
-        encoding="utf-8",
-    )
-    (records_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "dataset": "davis",
-                "preprocessing_version": "v1",
-                "split_version": "s1_v1",
-                "seed": 7,
-                "scenarios": ["s1"],
-                "split_paths": {"s1": str(split_path)},
-                "counts": {"s1": 2},
-            },
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[
+            {"drug_seq": "AA", "protein_seq": "MK", "labels": 1.0, "scenario": "s1", "partition": "train"},
+            {"drug_seq": "BB", "protein_seq": "ML", "labels": 0.0, "scenario": "s1", "partition": "train"},
+        ],
     )
 
     cfg = _valid_cfg()
@@ -213,22 +239,9 @@ def test_cli_train_can_register_runtime_plugins_from_config(tmp_path):
         ),
         encoding="utf-8",
     )
-    split_path = records_dir / "s1.jsonl"
-    split_path.write_text('{"drug_seq":"AA","labels":1.0,"scenario":"s1"}\n', encoding="utf-8")
-    (records_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "dataset": "davis",
-                "preprocessing_version": "v1",
-                "split_version": "s1_v1",
-                "seed": 7,
-                "scenarios": ["s1"],
-                "split_paths": {"s1": str(split_path)},
-                "counts": {"s1": 1},
-            },
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[{"drug_seq": "AA", "labels": 1.0, "scenario": "s1", "partition": "train"}],
     )
     cfg = _valid_cfg()
     cfg["data"]["preprocessing_version"] = "v1"

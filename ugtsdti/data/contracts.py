@@ -48,20 +48,51 @@ class SplitManifest:
     split_version: str
     seed: int
     scenarios: list[str]
-    split_paths: dict[str, str]
-    counts: dict[str, int]
+    partitions: list[str] = field(default_factory=lambda: ["train", "val", "test"])
+    scenario_partitions: dict[str, dict[str, str]] = field(default_factory=dict)
+    counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    protocol_report: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "SplitManifest":
+        if "scenario_partitions" not in payload:
+            split_paths = dict(payload.get("split_paths", {}))
+            counts = {str(key): int(value) for key, value in dict(payload.get("counts", {})).items()}
+            scenario_partitions = {str(scenario): {"test": str(path)} for scenario, path in split_paths.items()}
+            nested_counts = {str(scenario): {"test": int(counts.get(str(scenario), 0))} for scenario in split_paths}
+            partitions = ["test"]
+            protocol_report = payload.get("protocol_report", {})
+        else:
+            scenario_partitions = {
+                str(scenario): {str(partition): str(path) for partition, path in dict(partitions).items()}
+                for scenario, partitions in dict(payload.get("scenario_partitions", {})).items()
+            }
+            nested_counts = {
+                str(scenario): {str(partition): int(value) for partition, value in dict(partitions).items()}
+                for scenario, partitions in dict(payload.get("counts", {})).items()
+            }
+            partitions = list(payload.get("partitions", ["train", "val", "test"]))
+            protocol_report = dict(payload.get("protocol_report", {}))
         return cls(
             dataset=str(payload["dataset"]),
             preprocessing_version=str(payload["preprocessing_version"]),
             split_version=str(payload["split_version"]),
             seed=int(payload["seed"]),
             scenarios=list(payload.get("scenarios", [])),
-            split_paths=dict(payload.get("split_paths", {})),
-            counts={str(key): int(value) for key, value in dict(payload.get("counts", {})).items()},
+            partitions=partitions,
+            scenario_partitions=scenario_partitions,
+            counts=nested_counts,
+            protocol_report=protocol_report,
         )
+
+    @property
+    def split_paths(self) -> dict[str, str]:
+        """Backward-compatible alias for legacy single-file manifests."""
+        return {
+            scenario: partitions["test"]
+            for scenario, partitions in self.scenario_partitions.items()
+            if "test" in partitions
+        }
