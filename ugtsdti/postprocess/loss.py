@@ -26,7 +26,7 @@ class LossMapValidator:
 
 
 class LossComposer:
-    """Compose minimal hard loss without hidden interaction behavior."""
+    """Compose explicit hard and auxiliary losses without hidden behavior."""
 
     def __init__(self) -> None:
         self._validator = LossMapValidator()
@@ -39,17 +39,19 @@ class LossComposer:
     ) -> dict[str, Any]:
         self._validator.validate(loss_cfg, state)
         hard_loss = _hard_loss(state.get("logits"), labels)
+        hard_weight = float(loss_cfg.get("hard_weight", 1.0))
         outputs: dict[str, Any] = {
-            "loss.total": hard_loss,
             "loss.hard": hard_loss,
+            "loss.total": hard_weight * hard_loss,
         }
 
         for name, mapping in loss_cfg.get("map", {}).items():
             source_key = mapping.get("from", "") if isinstance(mapping, dict) else str(mapping)
             weight = mapping.get("weight", 1.0) if isinstance(mapping, dict) else 1.0
             if source_key:
-                outputs[f"loss.{name}"] = state.get(source_key)
-                outputs["loss.total"] = outputs["loss.total"] + weight * state.get(source_key)
+                component = state.get(source_key)
+                outputs[f"loss.{name}"] = component
+                outputs["loss.total"] = outputs["loss.total"] + float(weight) * component
 
         return outputs
 

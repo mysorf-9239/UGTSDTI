@@ -263,24 +263,24 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - **Property 10: `SoftBlendingDecisionModule` luôn emit `gate.alpha` trong [0, 1] và finite**
     - **Validates: REQ-DEC-002**
 
-- [ ] 13. Xây dựng advanced postprocess/ — Composite Loss, Metrics, Diagnostics Reporting
-  - [ ] 13.1 Mở rộng `LossComposer` trong `ugtsdti/postprocess/loss.py`
+- [x] 13. Xây dựng advanced postprocess/ — Composite Loss, Metrics, Diagnostics Reporting
+  - [x] 13.1 Mở rộng `LossComposer` trong `ugtsdti/postprocess/loss.py`
     - Nhận normalized loss config, `State` sau decision, labels
     - Emit: `loss.total`, `loss.hard`, `loss.kd` nếu applicable
     - Chỉ compose interaction outputs được map explicit trong config
     - Canonical: `L = (1 - lambda) * L_hard + lambda * L_KD`
     - _Requirements: REQ-POST-001_
-  - [ ] 13.2 Viết unit tests cho `LossComposer` và `LossMapValidator`
+  - [x] 13.2 Viết unit tests cho `LossComposer` và `LossMapValidator`
     - Test invalid loss mapping bị từ chối rõ ràng
     - Test interaction output không có trong loss map không bao giờ được include
     - _Requirements: REQ-POST-001, REQ-QUAL-001_
-  - [ ] 13.3 Triển khai `MetricsReporter` trong `ugtsdti/postprocess/metrics.py`
+  - [x] 13.3 Triển khai `MetricsReporter` trong `ugtsdti/postprocess/metrics.py`
     - Compute per-batch/per-split: AUROC, AUPRC, F1
     - Convert logits → probabilities trước khi threshold (không threshold raw logits)
     - Aggregate per-scenario reports khi `metrics.by_scenario: true`
     - Emit diagnostics với stable naming: `diagnostics.disagreement`, `diagnostics.gate_alpha`, `diagnostics.uncertainty_error`
     - _Requirements: REQ-POST-002, REQ-EVAL-001, REQ-ARCH-004_
-  - [ ] 13.4 Viết unit tests cho `MetricsReporter`
+  - [x] 13.4 Viết unit tests cho `MetricsReporter`
     - Test F1 không threshold trực tiếp raw logits
     - Test per-scenario metrics được tách biệt đúng
     - Test diagnostics outputs đúng namespace
