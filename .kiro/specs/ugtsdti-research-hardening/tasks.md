@@ -135,7 +135,7 @@ Có 4 checkpoint:
   - [x] 9.3 Viết tests cho gate semantic consistency
     - _Requirements: REQ-HARD-009_
 
-- [ ] 10. Checkpoint 3 — Metric / uncertainty / identity semantics đúng
+- [x] 10. Checkpoint 3 — Metric / uncertainty / identity semantics đúng
   - Verify metrics khớp fixtures chuẩn
   - Verify uncertainty naming không misleading
   - Verify gate surface không claim support giả
