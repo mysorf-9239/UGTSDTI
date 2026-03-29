@@ -158,3 +158,33 @@ class TestSnapshot:
     def test_empty_state_snapshot_is_empty_dict(self):
         state, _ = make_state_and_writer()
         assert state.snapshot() == {}
+
+
+class TestMutationIsolation:
+    def test_mutating_committed_list_source_does_not_affect_state(self):
+        state, writer = make_state_and_writer()
+        payload = [1, 2, 3]
+        writer.commit("p", {"values": payload})
+
+        payload.append(4)
+
+        assert state.get("values") == [1, 2, 3]
+
+    def test_mutating_committed_nested_mapping_source_does_not_affect_state(self):
+        state, writer = make_state_and_writer()
+        payload = {"logits": [1.0, 2.0]}
+        writer.commit("p", {"result": payload})
+
+        payload["logits"].append(3.0)
+
+        assert state.get("result") == {"logits": [1.0, 2.0]}
+
+    def test_committed_tensor_is_detached_from_source_tensor(self):
+        torch = pytest.importorskip("torch")
+        state, writer = make_state_and_writer()
+        tensor = torch.tensor([[1.0], [2.0]])
+        writer.commit("p", {"logits": tensor})
+
+        tensor.add_(1.0)
+
+        assert torch.equal(state.get("logits"), torch.tensor([[1.0], [2.0]]))

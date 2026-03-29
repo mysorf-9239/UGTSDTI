@@ -8,6 +8,7 @@ Design rules (REQ-STATE-001, REQ-STATE-002):
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from ugtsdti.core.errors import KeyCollisionError
@@ -93,5 +94,38 @@ class StateWriter:
                 )
 
         for key, value in outputs.items():
-            self._state._store[key] = value
+            self._state._store[key] = _isolate_value(value)
             self._producers[key] = producer
+
+
+def _isolate_value(value: Any) -> Any:
+    """Detach or copy mutable values at commit time to reduce silent mutation."""
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            return value.detach().clone()
+    except ImportError:
+        pass
+
+    try:
+        import numpy as np
+
+        if isinstance(value, np.ndarray):
+            return value.copy()
+    except ImportError:
+        pass
+
+    if isinstance(value, dict):
+        return {key: _isolate_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_isolate_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_isolate_value(item) for item in value)
+    if isinstance(value, set):
+        return {_isolate_value(item) for item in value}
+
+    try:
+        return deepcopy(value)
+    except Exception:
+        return value

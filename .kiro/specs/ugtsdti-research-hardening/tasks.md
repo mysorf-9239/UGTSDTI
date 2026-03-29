@@ -71,15 +71,15 @@ Có 4 checkpoint:
     - Runtime disabled path đúng contract
     - _Requirements: REQ-HARD-003_
 
-- [ ] 4. Hardening state mutability discipline
-  - [ ] 4.1 Audit các boundary outputs nhạy cảm
+- [x] 4. Hardening state mutability discipline
+  - [x] 4.1 Audit các boundary outputs nhạy cảm
     - `teacher.logits`, `student.logits`, `logits`, `gate.alpha`, `loss.*`, `metrics.*`
     - _Requirements: REQ-HARD-004_
-  - [ ] 4.2 Bổ sung isolation/detach policy ở nơi phù hợp
+  - [x] 4.2 Bổ sung isolation/detach policy ở nơi phù hợp
     - Clone/detach tensors tại boundary nếu cần
     - Document rõ objects nào được coi là immutable contract surface
     - _Requirements: REQ-HARD-004_
-  - [ ] 4.3 Viết tests phát hiện mutation-after-commit
+  - [x] 4.3 Viết tests phát hiện mutation-after-commit
     - _Requirements: REQ-HARD-004_
 
 - [ ] 5. Đồng bộ execution identity và reproducibility
