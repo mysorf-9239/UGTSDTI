@@ -125,7 +125,7 @@ def _full_teacher_student_cfg() -> dict:
             "order": ["uncertainty", "kd"],
             "dependencies": {"kd": ["uncertainty"]},
             "uncertainty": {
-                "type": "uncertainty.mc_dropout",
+                "type": "uncertainty.confidence_proxy",
                 "params": {
                     "samples": 10,
                     "enabled": True,
@@ -384,10 +384,15 @@ class TestDecisionPrerequisites:
     def test_use_uncertainty_with_disabled_module_in_params_fails(self):
         cfg = _full_teacher_student_cfg()
         cfg["interaction"]["uncertainty"] = {
-            "type": "uncertainty.mc_dropout",
+            "type": "uncertainty.confidence_proxy",
             "params": {"enabled": False, "targets": {"teacher": True, "student": True}},
         }
         assert_invalid(cfg, "uncertainty")
+
+    def test_legacy_mc_dropout_type_is_rejected(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["interaction"]["uncertainty"]["type"] = "uncertainty.mc_dropout"
+        assert_invalid(cfg, "no longer accepted")
 
     def test_no_use_uncertainty_without_module_passes(self):
         cfg = _minimal_student_only_cfg()

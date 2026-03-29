@@ -288,7 +288,7 @@ class TestStateSchemaBuilder:
             "dependencies": {"diagnostics": ["kd", "uncertainty"]},
             "kd": {"type": "kd.standard", "params": {"enabled": True}},
             "uncertainty": {
-                "type": "uncertainty.mc_dropout",
+                "type": "uncertainty.confidence_proxy",
                 "params": {"enabled": True, "targets": {"teacher": True, "student": False}},
             },
             "diagnostics": {"type": "diagnostics.basic", "params": {"enabled": True, "emit_calibration": True}},

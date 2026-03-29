@@ -15,7 +15,12 @@ from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.interaction.kd import KDInteraction, binary_logits_to_dist, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
-from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
+from ugtsdti.interaction.uncertainty import (
+    ConfidenceProxyUncertaintyInteraction,
+    SampleVarianceUncertaintyInteraction,
+    UncertaintyInteraction,
+    uncertainty_output_keys,
+)
 
 
 class _StubRuntime(InteractionRuntime):
@@ -273,9 +278,9 @@ class TestKDInteraction:
 
 
 class TestUncertaintyInteraction:
-    def test_uncertainty_outputs_are_finite_and_non_negative(self):
+    def test_sample_variance_outputs_are_finite_and_non_negative(self):
         torch = pytest.importorskip("torch")
-        runtime = UncertaintyInteraction(targets={"teacher": True, "student": True})
+        runtime = SampleVarianceUncertaintyInteraction(targets={"teacher": True, "student": True})
         outputs = runtime.forward(
             {
                 "teacher.logits": torch.tensor(
@@ -302,15 +307,25 @@ class TestUncertaintyInteraction:
         assert torch.all(outputs["teacher.var"] >= 0)
         assert torch.all(outputs["student.var"] >= 0)
 
-    def test_uncertainty_for_plain_logits_is_not_forced_to_zero(self):
+    def test_confidence_proxy_uncertainty_for_plain_logits_is_not_forced_to_zero(self):
         torch = pytest.importorskip("torch")
-        runtime = UncertaintyInteraction(targets={"teacher": True, "student": False})
+        runtime = ConfidenceProxyUncertaintyInteraction(targets={"teacher": True, "student": False})
         outputs = runtime.forward(
             {"teacher.logits": torch.tensor([[2.0], [0.0], [-2.0]])},
             ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
         )
 
         assert torch.any(outputs["teacher.var"] > 0)
+
+    def test_sample_variance_requires_sample_dimension(self):
+        torch = pytest.importorskip("torch")
+        runtime = SampleVarianceUncertaintyInteraction(targets={"teacher": True, "student": False})
+
+        with pytest.raises(InvalidInteractionGraphError, match="sampled logits"):
+            runtime.forward(
+                {"teacher.logits": torch.tensor([[0.0], [0.1], [-0.1]])},
+                ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+            )
 
     def test_uncertainty_supports_teacher_only_path(self):
         torch = pytest.importorskip("torch")

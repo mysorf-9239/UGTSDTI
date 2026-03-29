@@ -10,8 +10,15 @@ from ugtsdti.core.state import State
 class TrustEstimator:
     """Estimate trust signals from branch logits and optional uncertainty."""
 
-    def __init__(self, *, use_uncertainty: bool = False, epsilon: float = 1e-6) -> None:
+    def __init__(
+        self,
+        *,
+        use_uncertainty: bool = False,
+        uncertainty_source: str = "none",
+        epsilon: float = 1e-6,
+    ) -> None:
         self._use_uncertainty = use_uncertainty
+        self._uncertainty_source = uncertainty_source
         self._epsilon = epsilon
 
     def estimate(self, state: State) -> dict[str, Any]:
@@ -43,11 +50,14 @@ class TrustEstimator:
             student_score = student_score / (1.0 + student_var)
 
         alpha = teacher_score / (teacher_score + student_score + self._epsilon)
-        return {
+        outputs = {
             "gate.alpha": alpha.clamp(0.0, 1.0),
             "gate.teacher_score": teacher_score,
             "gate.student_score": student_score,
         }
+        if self._use_uncertainty:
+            outputs["gate.uncertainty_source"] = self._uncertainty_source
+        return outputs
 
 
 def _as_tensor(value: Any, *, device: Any | None = None) -> Any:

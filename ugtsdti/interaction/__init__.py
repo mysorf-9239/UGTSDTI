@@ -11,7 +11,12 @@ from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.interaction.kd import KDInteraction, binary_logits_to_dist, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
-from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
+from ugtsdti.interaction.uncertainty import (
+    ConfidenceProxyUncertaintyInteraction,
+    SampleVarianceUncertaintyInteraction,
+    UncertaintyInteraction,
+    uncertainty_output_keys,
+)
 
 __all__ = [
     "InteractionPluginSpec",
@@ -22,6 +27,8 @@ __all__ = [
     "KDInteraction",
     "binary_logits_to_dist",
     "kd_output_keys",
+    "SampleVarianceUncertaintyInteraction",
+    "ConfidenceProxyUncertaintyInteraction",
     "UncertaintyInteraction",
     "uncertainty_output_keys",
     "DiagnosticsInteraction",

@@ -2,7 +2,7 @@ extends:
   - ../base_full.yaml
 interaction:
   uncertainty:
-    type: uncertainty.mc_dropout
+    type: uncertainty.confidence_proxy
     inputs:
       - teacher.logits
       - student.logits

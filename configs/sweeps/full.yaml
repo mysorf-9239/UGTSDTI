@@ -10,9 +10,9 @@ sweep:
       - 0.1
       - 0.3
       - 0.5
-    interaction.uncertainty.params.sample_count:
-      - 4
-      - 8
+    decision.use_uncertainty:
+      - true
+      - false
     decision.strategy:
       - soft
       - hard

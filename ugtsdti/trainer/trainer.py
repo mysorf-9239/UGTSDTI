@@ -186,7 +186,10 @@ class PipelineExecutor:
             source_key = decision_cfg.get("source_key", "student.logits")
             return IdentityDecisionModule(source_key=source_key)
 
-        trust_estimator = TrustEstimator(use_uncertainty=bool(decision_cfg.get("use_uncertainty", False)))
+        trust_estimator = TrustEstimator(
+            use_uncertainty=bool(decision_cfg.get("use_uncertainty", False)),
+            uncertainty_source=_resolve_uncertainty_source(cfg),
+        )
         policy = DecisionPolicy()
 
         if strategy == "soft":
@@ -375,6 +378,20 @@ def _resolve_freeze_policy(cfg: dict[str, Any]) -> dict[str, bool]:
         "student": bool(student_cfg.get("freeze", False)),
         "gate": bool(gate_cfg.get("trainable", False)),
     }
+
+
+def _resolve_uncertainty_source(cfg: dict[str, Any]) -> str:
+    interaction_cfg = cfg.get("interaction", {})
+    for module_name in interaction_cfg.get("order", []):
+        module_cfg = interaction_cfg.get(module_name, {})
+        if not isinstance(module_cfg, dict):
+            continue
+        type_key = str(module_cfg.get("type", module_cfg.get("type_key", "")))
+        if type_key == "uncertainty.sample_variance":
+            return "sample_variance"
+        if type_key == "uncertainty.confidence_proxy":
+            return "confidence_proxy"
+    return "none"
 
 
 def _scheduled_kd_weight(cfg: dict[str, Any], step_idx: int) -> float | None:

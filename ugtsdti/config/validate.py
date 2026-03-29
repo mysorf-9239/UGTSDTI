@@ -221,6 +221,14 @@ class ConfigValidator:
                     stage="config_validate",
                     key=f"interaction.{mod_name}.type",
                 )
+            if type_key == "uncertainty.mc_dropout":
+                raise InvalidConfigError(
+                    "Interaction type 'uncertainty.mc_dropout' is no longer accepted. "
+                    "Use 'uncertainty.sample_variance' for sampled logits or "
+                    "'uncertainty.confidence_proxy' for heuristic confidence-derived uncertainty.",
+                    stage="config_validate",
+                    key=f"interaction.{mod_name}.type",
+                )
 
     def _check_decision_schema(self, cfg: dict[str, Any]) -> None:
         decision = cfg.get("decision", {})

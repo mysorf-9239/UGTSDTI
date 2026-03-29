@@ -77,7 +77,7 @@ interaction:
       mode: logits
       temperature: 2.0
   uncertainty:
-    type: uncertainty.mc_dropout
+    type: uncertainty.confidence_proxy
     inputs:
       - teacher.logits
       - student.logits

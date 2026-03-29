@@ -81,7 +81,7 @@ def _make_registries():
         KDInteraction,
     )
     interaction_registry.register(
-        InteractionPluginSpec(type_key="uncertainty.mc_dropout", output_keys_fn=uncertainty_output_keys),
+        InteractionPluginSpec(type_key="uncertainty.confidence_proxy", output_keys_fn=uncertainty_output_keys),
         UncertaintyInteraction,
     )
     interaction_registry.register(

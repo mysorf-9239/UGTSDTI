@@ -107,6 +107,7 @@ def test_hard_selection_module_emits_gate_outputs_and_logits():
     )
 
     assert "gate.alpha" in outputs
+    assert outputs["gate.uncertainty_source"] == "none"
     assert outputs["logits"].shape == state.get("teacher.logits").shape
 
 

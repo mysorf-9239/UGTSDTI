@@ -79,7 +79,7 @@ def _make_registries():
         KDInteraction,
     )
     interaction_registry.register(
-        InteractionPluginSpec(type_key="uncertainty.mc_dropout", output_keys_fn=uncertainty_output_keys),
+        InteractionPluginSpec(type_key="uncertainty.confidence_proxy", output_keys_fn=uncertainty_output_keys),
         UncertaintyInteraction,
     )
     return graph_registry, interaction_registry
@@ -191,7 +191,7 @@ def _teacher_student_uncertainty_cfg():
         "order": ["uncertainty"],
         "dependencies": {},
         "uncertainty": {
-            "type": "uncertainty.mc_dropout",
+            "type": "uncertainty.confidence_proxy",
             "inputs": ["teacher.logits", "student.logits"],
             "params": {
                 "enabled": True,
@@ -427,9 +427,11 @@ def test_uncertainty_driven_decision_pipeline_emits_gate_outputs():
     assert state.has("teacher.var")
     assert state.has("student.var")
     assert state.has("gate.alpha")
+    assert state.has("gate.uncertainty_source")
     assert state.has("logits")
     assert torch.all(torch.isfinite(state.get("teacher.var")))
     assert torch.all(torch.isfinite(state.get("student.var")))
     assert torch.all((state.get("gate.alpha") >= 0.0) & (state.get("gate.alpha") <= 1.0))
+    assert state.get("gate.uncertainty_source") == "confidence_proxy"
     assert state.has("metrics.f1")
     assert trace.stage_order[-1] == "postprocess"

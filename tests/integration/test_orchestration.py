@@ -70,7 +70,7 @@ def _make_registries():
         KDInteraction,
     )
     interaction_registry.register(
-        InteractionPluginSpec(type_key="uncertainty.mc_dropout", output_keys_fn=uncertainty_output_keys),
+        InteractionPluginSpec(type_key="uncertainty.confidence_proxy", output_keys_fn=uncertainty_output_keys),
         UncertaintyInteraction,
     )
     interaction_registry.register(
@@ -103,7 +103,7 @@ def _cfg():
                 "params": {"mode": "logits", "temperature": 2.0, "enabled": True},
             },
             "uncertainty": {
-                "type": "uncertainty.mc_dropout",
+                "type": "uncertainty.confidence_proxy",
                 "inputs": ["teacher.logits", "student.logits"],
                 "params": {"enabled": True, "targets": {"teacher": True, "student": True}},
             },

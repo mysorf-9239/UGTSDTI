@@ -114,16 +114,16 @@ Có 4 checkpoint:
   - [x] 7.4 Viết tests cho scenario-wise metrics correctness
     - _Requirements: REQ-HARD-007_
 
-- [ ] 8. Sửa uncertainty semantics
-  - [ ] 8.1 Tách uncertainty modes
+- [x] 8. Sửa uncertainty semantics
+  - [x] 8.1 Tách uncertainty modes
     - `uncertainty.sample_variance`
     - `uncertainty.confidence_proxy`
     - _Requirements: REQ-HARD-008_
-  - [ ] 8.2 Cập nhật validator + planner + docs cho uncertainty modes mới
+  - [x] 8.2 Cập nhật validator + planner + docs cho uncertainty modes mới
     - _Requirements: REQ-HARD-008_
-  - [ ] 8.3 Cập nhật `TrustEstimator` để biết uncertainty source type
+  - [x] 8.3 Cập nhật `TrustEstimator` để biết uncertainty source type
     - _Requirements: REQ-HARD-008, REQ-HARD-009_
-  - [ ] 8.4 Viết tests cho uncertainty mode semantics
+  - [x] 8.4 Viết tests cho uncertainty mode semantics
     - _Requirements: REQ-HARD-008_
 
 - [ ] 9. Siết gate semantics

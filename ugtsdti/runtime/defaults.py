@@ -10,7 +10,11 @@ from ugtsdti.interaction.diagnostics import DiagnosticsInteraction, diagnostics_
 from ugtsdti.interaction.kd import KDInteraction, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionRegistry
-from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
+from ugtsdti.interaction.uncertainty import (
+    ConfidenceProxyUncertaintyInteraction,
+    SampleVarianceUncertaintyInteraction,
+    uncertainty_output_keys,
+)
 from ugtsdti.nodes.base import NodeRuntime
 
 
@@ -98,8 +102,12 @@ def build_default_interaction_registry() -> InteractionRegistry:
         KDInteraction,
     )
     registry.register(
-        InteractionPluginSpec(type_key="uncertainty.mc_dropout", output_keys_fn=uncertainty_output_keys),
-        UncertaintyInteraction,
+        InteractionPluginSpec(type_key="uncertainty.sample_variance", output_keys_fn=uncertainty_output_keys),
+        SampleVarianceUncertaintyInteraction,
+    )
+    registry.register(
+        InteractionPluginSpec(type_key="uncertainty.confidence_proxy", output_keys_fn=uncertainty_output_keys),
+        ConfidenceProxyUncertaintyInteraction,
     )
     registry.register(
         InteractionPluginSpec(type_key="diagnostics.basic", output_keys_fn=diagnostics_output_keys),

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
+from ugtsdti.core.errors import InvalidInteractionGraphError
 from ugtsdti.interaction.base import InteractionRuntime
 
 
@@ -25,9 +26,7 @@ def uncertainty_output_keys(params: dict[str, Any]) -> list[str]:
     return keys
 
 
-class UncertaintyInteraction(InteractionRuntime):
-    """Estimate per-branch uncertainty from logits or sampled predictions."""
-
+class _BaseUncertaintyInteraction(InteractionRuntime):
     def __init__(
         self,
         *,
@@ -53,23 +52,52 @@ class UncertaintyInteraction(InteractionRuntime):
         emit_student = self._targets.get("student", True)
 
         if emit_teacher and "teacher.logits" in inputs:
-            outputs["teacher.var"] = _estimate_variance(inputs["teacher.logits"], sample_dim=self._sample_dim)
+            outputs["teacher.var"] = self._estimate(inputs["teacher.logits"])
         if emit_student and "student.logits" in inputs:
-            outputs["student.var"] = _estimate_variance(inputs["student.logits"], sample_dim=self._sample_dim)
+            outputs["student.var"] = self._estimate(inputs["student.logits"])
         return outputs
 
+    def _estimate(self, value: Any) -> Any:
+        raise NotImplementedError
 
-def _estimate_variance(value: Any, *, sample_dim: int) -> Any:
-    try:
-        import torch
 
-        tensor = value if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=torch.float32)
-        tensor = tensor.to(dtype=torch.float32)
-        if tensor.ndim >= 3:
-            variance = tensor.var(dim=sample_dim, unbiased=False)
-        else:
+class SampleVarianceUncertaintyInteraction(_BaseUncertaintyInteraction):
+    """Estimate uncertainty from repeated sampled forward passes."""
+
+    def _estimate(self, value: Any) -> Any:
+        try:
+            import torch
+
+            tensor = value if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=torch.float32)
+            tensor = tensor.to(dtype=torch.float32)
+            if tensor.ndim < 3:
+                raise InvalidInteractionGraphError(
+                    "uncertainty.sample_variance requires sampled logits with an explicit sample dimension.",
+                    stage="interaction",
+                    component="SampleVarianceUncertaintyInteraction",
+                    key="logits",
+                )
+            variance = tensor.var(dim=self._sample_dim, unbiased=False)
+            return variance.clamp_min(0.0)
+        except ImportError as exc:
+            raise RuntimeError("SampleVarianceUncertaintyInteraction requires torch.") from exc
+
+
+class ConfidenceProxyUncertaintyInteraction(_BaseUncertaintyInteraction):
+    """Estimate uncertainty as a confidence-derived proxy from logits."""
+
+    def _estimate(self, value: Any) -> Any:
+        try:
+            import torch
+
+            tensor = value if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=torch.float32)
+            tensor = tensor.to(dtype=torch.float32)
             probs = torch.sigmoid(tensor)
             variance = probs * (1.0 - probs)
-        return variance.clamp_min(0.0)
-    except ImportError as exc:
-        raise RuntimeError("UncertaintyInteraction requires torch.") from exc
+            return variance.clamp_min(0.0)
+        except ImportError as exc:
+            raise RuntimeError("ConfidenceProxyUncertaintyInteraction requires torch.") from exc
+
+
+class UncertaintyInteraction(ConfidenceProxyUncertaintyInteraction):
+    """Backward-compatible alias for the confidence-proxy uncertainty path."""
