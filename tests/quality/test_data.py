@@ -80,7 +80,7 @@ def test_data_validator_missing_labels_raises():
 def test_data_validator_version_mismatch_raises(tmp_path):
     dataset_version = DatasetVersion(
         dataset="davis",
-        raw_version="raw-v1",
+        dataset_version="raw-v1",
         preprocessing_version="prep-v1",
         record_count=4,
         feature_keys=["labels"],
@@ -130,7 +130,7 @@ def test_loader_factory_reads_materialized_split(tmp_path):
     )
     dataset_version = DatasetVersion(
         dataset="davis",
-        raw_version="davis",
+        dataset_version="davis",
         preprocessing_version="prep-v1",
         record_count=2,
         feature_keys=["drug_seq", "protein_seq", "labels", "scenario"],
@@ -172,7 +172,7 @@ def test_loader_factory_can_select_multiple_scenarios(tmp_path):
     s2_path.write_text(json.dumps(s2_record, sort_keys=True) + "\n", encoding="utf-8")
     dataset_version = DatasetVersion(
         dataset="davis",
-        raw_version="davis",
+        dataset_version="davis",
         preprocessing_version="prep-v1",
         record_count=2,
         feature_keys=["drug_seq", "protein_seq", "labels", "scenario"],
@@ -209,3 +209,20 @@ def test_data_validator_missing_artifact_raises(tmp_path):
             dataset_version_path=tmp_path / "missing_dataset_version.json",
             split_manifest_path=tmp_path / "missing_manifest.json",
         )
+
+
+def test_dataset_version_supports_backward_compatible_raw_version_alias():
+    version = DatasetVersion.from_dict(
+        {
+            "dataset": "davis",
+            "raw_version": "raw-v1",
+            "preprocessing_version": "prep-v1",
+            "record_count": 2,
+            "feature_keys": ["labels"],
+        }
+    )
+
+    assert version.dataset_version == "raw-v1"
+    assert version.raw_version == "raw-v1"
+    assert version.to_dict()["dataset_version"] == "raw-v1"
+    assert version.to_dict()["raw_version"] == "raw-v1"

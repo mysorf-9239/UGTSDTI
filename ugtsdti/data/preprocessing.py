@@ -41,7 +41,7 @@ class DataPreprocessor:
         feature_keys = sorted({key for row in materialized for key in row.keys()})
         version = DatasetVersion(
             dataset=dataset,
-            raw_version=raw_path.stem,
+            dataset_version=raw_path.stem,
             preprocessing_version=preprocessing_version,
             record_count=len(materialized),
             feature_keys=feature_keys,

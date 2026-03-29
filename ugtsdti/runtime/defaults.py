@@ -29,8 +29,10 @@ class SimpleLinearHeadRuntime(NodeRuntime):
     """Produce scalar logits from flattened embeddings."""
 
     def __init__(self, *, scale: float = 0.1, bias: float = 0.0) -> None:
-        self._scale = float(scale)
-        self._bias = float(bias)
+        import torch
+
+        self._scale = torch.nn.Parameter(torch.tensor(float(scale), dtype=torch.float32))
+        self._bias = torch.nn.Parameter(torch.tensor(float(bias), dtype=torch.float32))
 
     def forward(self, inputs: dict[str, Any], context: Any) -> dict[str, Any]:
         del context
@@ -41,6 +43,15 @@ class SimpleLinearHeadRuntime(NodeRuntime):
         flattened = tensor.reshape(tensor.shape[0], -1)
         logits = flattened.mean(dim=1, keepdim=True) * self._scale + self._bias
         return {"logits": logits}
+
+    def parameters(self) -> list[Any]:
+        return [self._scale, self._bias]
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "scale": self._scale.detach().cpu().clone(),
+            "bias": self._bias.detach().cpu().clone(),
+        }
 
 
 def build_default_graph_registry() -> NodeRegistry:

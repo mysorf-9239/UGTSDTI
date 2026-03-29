@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -16,9 +17,12 @@ from ugtsdti.data.validate import DataValidator
 from ugtsdti.graph.builder import GraphBuilder
 from ugtsdti.graph.planner import GraphPlanner
 from ugtsdti.interaction.registry import InteractionPlanner
+from ugtsdti.logging import CompositeLogger, FileLogger, Logger, WandbLogger
 from ugtsdti.runtime import (
     ArtifactWriter,
+    CheckpointIO,
     RuntimeAdapter,
+    apply_runtime_registrars,
     build_default_graph_registry,
     build_default_interaction_registry,
     build_experiment_identity,
@@ -150,22 +154,51 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> No
     context = _build_context(runtime_state, mode="train")
     train_scenario = str(runtime_cfg.get("scenario", {}).get("train", "s1"))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=[train_scenario])
-    artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
-    trainer = Trainer(executor, artifact_writer=artifact_writer)
     identity = build_experiment_identity(cfg)
+    logs_dir = _logs_dir(runtime_state, identity.run_id)
+    logger = _build_logger(cfg, logs_dir)
+    checkpoint_io = CheckpointIO()
+    artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
+    trainer = Trainer(
+        executor,
+        logger=logger,
+        checkpoint_io=checkpoint_io,
+        artifact_writer=artifact_writer,
+        parameter_groups=executor.parameter_groups(runtime_cfg),
+    )
+    optimizer = _build_optimizer(cfg, executor, runtime_cfg)
+    checkpoint_path = Path(runtime_state["checkpoint_dir"]) / f"{identity.run_id}.pt"
 
-    for step_idx, batch in enumerate(batches):
-        trainer.step(
-            batch,
-            runtime_cfg,
-            context,
-            step_idx=step_idx,
-            identity=identity,
-            normalized_config=runtime_cfg,
-            split_manifest=split_manifest,
-            model_state={"runtime": "builtin-defaults"},
+    try:
+        for step_idx, batch in enumerate(batches):
+            trainer.step(
+                batch,
+                runtime_cfg,
+                context,
+                optimizer=optimizer,
+                step_idx=step_idx,
+                epoch=0,
+                checkpoint_path=str(checkpoint_path),
+                identity=identity,
+                normalized_config=runtime_cfg,
+                split_manifest=split_manifest,
+                model_state=lambda: executor.model_state(runtime_cfg),
+                logs_dir=str(logs_dir),
+            )
+        stream.write(
+            json.dumps(
+                {
+                    "batches": len(batches),
+                    "checkpoint": str(checkpoint_path),
+                    "command": args.command,
+                    "logs_dir": str(logs_dir),
+                },
+                sort_keys=True,
+            )
+            + "\n"
         )
-    stream.write(json.dumps({"command": args.command, "batches": len(batches)}, sort_keys=True) + "\n")
+    finally:
+        logger.close()
 
 
 def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> None:
@@ -173,20 +206,28 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> Non
     context = _build_context(runtime_state, mode="eval")
     eval_scenarios = list(runtime_cfg.get("scenario", {}).get("eval", []))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios)
-    artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
-    evaluator = Evaluator(executor, artifact_writer=artifact_writer)
     identity = build_experiment_identity(cfg)
-    result = evaluator.evaluate(
-        batches,
-        runtime_cfg,
-        context,
-        identity=identity,
-        normalized_config=runtime_cfg,
-        split_manifest=split_manifest,
-        model_state={"runtime": "builtin-defaults"},
-    )
-    summary = {key: value for key, value in result.metrics.items() if key.startswith("metrics.")}
-    stream.write(json.dumps({"command": args.command, "metrics": summary}, sort_keys=True) + "\n")
+    logs_dir = _logs_dir(runtime_state, identity.run_id)
+    logger = _build_logger(cfg, logs_dir)
+    artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
+    evaluator = Evaluator(executor, logger=logger, artifact_writer=artifact_writer)
+    try:
+        result = evaluator.evaluate(
+            batches,
+            runtime_cfg,
+            context,
+            identity=identity,
+            normalized_config=runtime_cfg,
+            split_manifest=split_manifest,
+            model_state=executor.model_state(runtime_cfg),
+            logs_dir=str(logs_dir),
+        )
+        summary = {key: value for key, value in result.metrics.items() if key.startswith("metrics.")}
+        stream.write(
+            json.dumps({"command": args.command, "logs_dir": str(logs_dir), "metrics": summary}, sort_keys=True) + "\n"
+        )
+    finally:
+        logger.close()
 
 
 def _run_sweep(cfg: dict[str, Any], args: argparse.Namespace, stream: Any) -> None:
@@ -200,6 +241,13 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
 
     graph_registry = build_default_graph_registry()
     interaction_registry = build_default_interaction_registry()
+    registrars = list(cfg.get("runtime", {}).get("plugin_registrars", []))
+    if registrars:
+        apply_runtime_registrars(
+            registrars,
+            graph_registry=graph_registry,
+            interaction_registry=interaction_registry,
+        )
 
     runtime_cfg = dict(cfg)
     runtime_cfg["graph"] = _graph_nodes_as_list(dict(cfg.get("graph", {})))
@@ -213,6 +261,44 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
     )
     executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
     return runtime_cfg, executor, runtime_state
+
+
+def _logs_dir(runtime_state: dict[str, Any], run_id: str) -> Path:
+    return Path(runtime_state["artifacts_dir"]) / "_logs" / run_id
+
+
+def _build_logger(cfg: dict[str, Any], logs_dir: Path) -> CompositeLogger:
+    logging_cfg = dict(cfg.get("logging", {}))
+    backend = str(logging_cfg.get("backend", "file")).lower()
+    loggers: list[Logger] = [FileLogger(logs_dir)]
+    if backend == "wandb":
+        project = str(cfg.get("experiment", {}).get("name", "ugtsdti"))
+        loggers.append(WandbLogger(project=project, enabled=True))
+    return CompositeLogger(loggers)
+
+
+def _build_optimizer(
+    cfg: dict[str, Any],
+    executor: PipelineExecutor,
+    runtime_cfg: dict[str, Any],
+) -> Any | None:
+    try:
+        importlib.import_module("torch")
+        from torch.optim import SGD as SgdOptimizer  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+
+    parameter_groups = executor.parameter_groups(runtime_cfg)
+    trainable = [parameter for group in parameter_groups.values() for parameter in group if _is_trainable(parameter)]
+    if not trainable:
+        return None
+    optimizer_cfg = cfg.get("training", {}).get("optimizer", {})
+    lr = float(optimizer_cfg.get("lr", 0.01))
+    return SgdOptimizer(trainable, lr=lr)
+
+
+def _is_trainable(parameter: Any) -> bool:
+    return bool(getattr(parameter, "requires_grad", False))
 
 
 def _build_context(runtime_state: dict[str, Any], *, mode: str) -> ExecutionContext:

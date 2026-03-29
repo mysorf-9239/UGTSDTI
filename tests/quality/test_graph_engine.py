@@ -389,3 +389,27 @@ class TestRuntimeLifecycle:
             state, writer = _make_state_and_writer()
             engine.run(plan, state, writer, context)
             assert state.get("n.out") == expected
+
+    def test_runtime_is_reused_across_runs_for_same_definition(self):
+        spec = NodePluginSpec(type_key="counter", output_attrs=["out"])
+
+        class CounterRuntime(NodeRuntime):
+            def __init__(self):
+                self._count = 0
+
+            def forward(self, inputs, context):
+                del inputs, context
+                self._count += 1
+                return {"out": self._count}
+
+        registry = _make_registry((spec, CounterRuntime))
+        engine = GraphEngine(registry)
+        plan = _build_and_plan(registry, {"nodes": [{"name": "counter", "type_key": "counter", "inputs": []}]})
+
+        first_state, first_writer = _make_state_and_writer()
+        engine.run(plan, first_state, first_writer, _make_context())
+        second_state, second_writer = _make_state_and_writer()
+        engine.run(plan, second_state, second_writer, _make_context())
+
+        assert first_state.get("counter.out") == 1
+        assert second_state.get("counter.out") == 2

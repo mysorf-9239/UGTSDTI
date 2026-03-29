@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
@@ -65,6 +65,7 @@ class PipelineExecutor:
         self._debug = debug
         self._strict_mode = strict_mode
         self._schema_builder = StateSchemaBuilder()
+        self._graph_engine = GraphEngine(self._graph_registry, debug=self._debug, strict_mode=self._strict_mode)
 
     def run_until_decision(
         self,
@@ -109,8 +110,7 @@ class PipelineExecutor:
         trace.state_boundary_summaries["batch"] = state.keys()
 
         graph_plan = cfg["graph_plan"]
-        graph_engine = GraphEngine(self._graph_registry, debug=self._debug, strict_mode=self._strict_mode)
-        trace.graph_trace = graph_engine.run(graph_plan, state, writer, context)
+        trace.graph_trace = self._graph_engine.run(graph_plan, state, writer, context)
         trace.state_boundary_summaries["graph"] = state.keys()
 
         bindings = self._build_role_bindings(cfg)
@@ -211,6 +211,36 @@ class PipelineExecutor:
             key="decision.strategy",
         )
 
+    def parameter_groups(self, cfg: dict[str, Any]) -> dict[str, list[Any]]:
+        """Collect graph runtime parameters grouped by role."""
+        plan = cfg["graph_plan"]
+        definitions = plan.definition_map()
+        producers = plan.producers
+        groups: dict[str, list[Any]] = {"teacher": [], "student": [], "gate": []}
+        for role_name in ("teacher", "student"):
+            role_cfg = cfg.get("roles", {}).get(role_name, {})
+            for output_key in role_cfg.get("outputs", []):
+                node_name = producers.get(output_key)
+                if node_name is None:
+                    continue
+                runtime = self._graph_engine.ensure_runtime(definitions[node_name])
+                parameters = getattr(runtime, "parameters", None)
+                if callable(parameters):
+                    groups[role_name].extend(list(parameters()))
+        return groups
+
+    def model_state(self, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Collect serializable runtime state for graph nodes."""
+        plan = cfg["graph_plan"]
+        definitions = plan.definition_map()
+        state: dict[str, Any] = {}
+        for node_name in plan.order:
+            runtime = self._graph_engine.ensure_runtime(definitions[node_name])
+            state_dict = getattr(runtime, "state_dict", None)
+            if callable(state_dict):
+                state[node_name] = state_dict()
+        return state
+
 
 class Trainer:
     """Training orchestration on top of the shared pipeline executor."""
@@ -245,7 +275,7 @@ class Trainer:
         identity: ExperimentIdentity | dict[str, Any] | None = None,
         normalized_config: dict[str, Any] | None = None,
         split_manifest: dict[str, Any] | None = None,
-        model_state: dict[str, Any] | None = None,
+        model_state: Any | None = None,
         logs_dir: str | None = None,
     ) -> TrainStepResult:
         scheduled_cfg = self._apply_kd_schedule(cfg, step_idx)
@@ -264,6 +294,7 @@ class Trainer:
             optimizer.step()
         if scheduler is not None:
             scheduler.step()
+        resolved_model_state = model_state() if callable(model_state) else model_state
 
         logged_metrics = _collect_scalar_metrics(state)
         logged_metrics["trainer.epoch"] = float(epoch)
@@ -274,8 +305,32 @@ class Trainer:
         if self._logger is not None:
             self._logger.log_metrics(logged_metrics, step=step_idx)
 
-        if self._checkpoint_io is not None and checkpoint_path and checkpoint_bundle is not None:
-            self._checkpoint_io.save(checkpoint_bundle, checkpoint_path)
+        if self._checkpoint_io is not None and checkpoint_path:
+            bundle = checkpoint_bundle
+            if bundle is None and identity is not None and normalized_config is not None:
+                bundle = CheckpointBundle(
+                    model_state=resolved_model_state or {},
+                    optimizer_state=_component_state_dict(optimizer),
+                    scheduler_state=_component_state_dict(scheduler),
+                    rng_state={},
+                    epoch=epoch,
+                    step=step_idx,
+                    identity=_identity_dict(identity),
+                    config=normalized_config,
+                    dataset_metadata=(split_manifest or {}).get("dataset_version", {}),
+                    split_metadata=split_manifest or {},
+                )
+            elif bundle is not None and resolved_model_state is not None:
+                bundle = replace(
+                    bundle,
+                    model_state=resolved_model_state,
+                    optimizer_state=_component_state_dict(optimizer),
+                    scheduler_state=_component_state_dict(scheduler),
+                    epoch=epoch,
+                    step=step_idx,
+                )
+            if bundle is not None:
+                self._checkpoint_io.save(bundle, checkpoint_path)
         if self._artifact_writer is not None and identity is not None and normalized_config is not None:
             self._artifact_writer.write_bundle(
                 identity=_identity_dict(identity),
@@ -283,8 +338,8 @@ class Trainer:
                 metrics={key: value for key, value in state.snapshot().items() if key.startswith("metrics.")},
                 diagnostics={key: value for key, value in state.snapshot().items() if key.startswith("diagnostics.")},
                 split_manifest=split_manifest or {},
-                model_state=model_state
-                if model_state is not None
+                model_state=resolved_model_state
+                if resolved_model_state is not None
                 else checkpoint_bundle.model_state
                 if checkpoint_bundle
                 else {},
@@ -416,3 +471,10 @@ def _identity_dict(identity: ExperimentIdentity | dict[str, Any]) -> dict[str, A
     if isinstance(identity, ExperimentIdentity):
         return identity.to_dict()
     return dict(identity)
+
+
+def _component_state_dict(component: Any | None) -> dict[str, Any]:
+    state_dict = getattr(component, "state_dict", None)
+    if callable(state_dict):
+        return dict(state_dict())
+    return {}

@@ -96,6 +96,8 @@ class GraphEngine:
         self._registry = registry
         self._debug = debug
         self._strict_mode = strict_mode
+        self._runtime_cache: dict[tuple[Any, ...], Any] = {}
+        self._runtimes_by_name: dict[str, Any] = {}
 
     def run(
         self,
@@ -117,7 +119,6 @@ class GraphEngine:
         """
         trace = GraphTrace(node_order=list(plan.order))
         defn_map = plan.definition_map()
-        runtime_cache: dict[str, Any] = {}
 
         for node_name in plan.order:
             defn = defn_map[node_name]
@@ -127,9 +128,8 @@ class GraphEngine:
             inputs = self._materialize_inputs(node_name, defn.inputs, state)
 
             # 2. Get or build runtime
-            if node_name not in runtime_cache:
-                runtime_cache[node_name] = self._registry.build_runtime(defn)
-            runtime = runtime_cache[node_name]
+            runtime = self.ensure_runtime(defn)
+            self._runtimes_by_name[node_name] = runtime
 
             # 3. Forward
             raw_outputs: dict[str, Any] = runtime.forward(inputs, context)
@@ -160,6 +160,17 @@ class GraphEngine:
                 )
 
         return trace
+
+    def ensure_runtime(self, definition: Any) -> Any:
+        """Return a stable runtime instance for *definition*."""
+        runtime_key = self._runtime_key(definition)
+        if runtime_key not in self._runtime_cache:
+            self._runtime_cache[runtime_key] = self._registry.build_runtime(definition)
+        return self._runtime_cache[runtime_key]
+
+    def get_runtime(self, node_name: str) -> Any | None:
+        """Return the most recently bound runtime for *node_name* if available."""
+        return self._runtimes_by_name.get(node_name)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -224,6 +235,14 @@ class GraphEngine:
                 key=node_name,
             )
 
+    def _runtime_key(self, definition: Any) -> tuple[Any, ...]:
+        return (
+            definition.name,
+            definition.type_key,
+            tuple(definition.inputs),
+            _freeze_mapping(definition.params),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Numerical safety helper
@@ -287,3 +306,13 @@ def _check_numerical_safety(key: str, value: Any, node_name: str) -> None:
     except Exception:
         # If we can't check, skip silently
         pass
+
+
+def _freeze_mapping(value: Any) -> Any:
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _freeze_mapping(val)) for key, val in value.items()))
+    if isinstance(value, list):
+        return tuple(_freeze_mapping(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze_mapping(item) for item in value)
+    return value
