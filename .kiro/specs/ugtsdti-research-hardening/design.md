@@ -260,6 +260,21 @@ Nếu `training.gate.trainable: true` nhưng decision không expose trainable ga
 - validator phải reject;
 - hoặc runtime phải coerce fail-closed.
 
+Public config surface hiện được chốt là:
+
+```yaml
+decision:
+  type: gate.uncertainty
+  mode: heuristic
+  strategy: soft
+  use_uncertainty: true
+training:
+  gate:
+    trainable: false
+```
+
+`decision.mode: learned` và `training.gate.trainable: true` hiện phải fail-closed cho tới khi có learned gate runtime thật.
+
 ### 9.3 Minimal learned gate design
 
 Nếu làm learned gate ở pha này, shape tối thiểu:
@@ -301,6 +316,25 @@ prepare runtime
      summary log
 ```
 
+Public surface tối thiểu được chốt là:
+
+```yaml
+training:
+  optimizer:
+    lr: 0.01
+  loop:
+    epochs: 1
+    checkpoint_every_epochs: 1
+    summary_every_steps: 1
+    eval_every_epochs: 0
+    eval_partition: val
+runtime:
+  checkpoint_path: null
+```
+
+- `training.loop.*` điều khiển epoch loop, checkpoint cadence, summary cadence, và optional eval cadence.
+- `runtime.checkpoint_path` là operational input cho eval / lineage path, không được làm thay đổi semantic `config_hash`.
+
 ### 10.4 Scope limitation
 
 Không bắt buộc distributed training, AMP phức tạp, gradient accumulation, early stopping nâng cao trong pha này.
@@ -321,10 +355,9 @@ Config validation nên có khả năng validate custom plugins sau khi registrar
 
 ```text
 load raw config
--> normalize minimal runtime/plugin surface
--> instantiate registries
--> apply plugin registrars
--> run plugin-aware validation
+-> instantiate default registries
+-> apply plugin registrars (if any)
+-> run plugin-aware validation against loaded registries
 -> build plans
 ```
 

@@ -164,10 +164,10 @@ Có 4 checkpoint:
     - Valid custom node/interaction plugin
     - _Requirements: REQ-HARD-011_
 
-- [ ] 13. Cập nhật traceability và spec collateral
-  - [ ] 13.1 Cập nhật `.docs/traceability.md` với REQ-HARD-* mới
+- [x] 13. Cập nhật traceability và spec collateral
+  - [x] 13.1 Cập nhật `.docs/traceability.md` với REQ-HARD-* mới
     - _Requirements: REQ-HARD-012_
-  - [ ] 13.2 Cập nhật design/docs references nếu implementation đổi public surface
+  - [x] 13.2 Cập nhật design/docs references nếu implementation đổi public surface
     - _Requirements: REQ-HARD-012_
 
 - [ ] 14. Checkpoint 4 — Research-ready hardening baseline
