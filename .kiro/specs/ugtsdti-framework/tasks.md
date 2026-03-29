@@ -409,7 +409,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Update configs mẫu để phản ánh identity decision module ở minimal baseline và soft blending ở full pipeline
     - _Requirements: REQ-ABL-001, REQ-REPRO-002_
 
-- [ ] 19. Checkpoint 5 — Full UGTS pipeline hoạt động
+- [x] 19. Checkpoint 5 — Full UGTS pipeline hoạt động
   - Chạy full pipeline: student + teacher + KD + uncertainty + `SoftBlendingDecisionModule`
   - Verify 4-scenario evaluation (S1–S4) với per-scenario metrics
   - Verify reproducibility bundle, execution trace, và state boundary summaries được lưu đầy đủ
