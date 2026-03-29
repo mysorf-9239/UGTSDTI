@@ -175,7 +175,7 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Verify debug trace và state boundary summaries được tạo đúng
     - _Requirements: REQ-ARCH-001, REQ-DEC-001, REQ-POST-001, REQ-GRAPH-003_
 
-- [ ] 7. Checkpoint 1 — Student-only pipeline chạy được
+- [x] 7. Checkpoint 1 — Student-only pipeline chạy được
   - Đảm bảo forward pass hoàn chỉnh: Batch → Graph → Role Binding → no-op Interaction → Identity Decision → hard Loss
   - Verify minimal baseline không bypass stage nào
   - Verify `student.logits`, final `logits`, `loss.total` được tạo đúng stage và đúng naming contract
