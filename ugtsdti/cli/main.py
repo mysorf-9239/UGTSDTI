@@ -76,12 +76,12 @@ def run_cli(
         if args.command == "validate":
             for config_path in config_paths:
                 raw_cfg = loader.load(Path(config_path))
-                validator.validate(raw_cfg)
+                _validate_raw_config(raw_cfg, validator)
             stream.write("VALID\n")
             return 0
 
         raw_cfg = loader.load(Path(config_paths[0]))
-        validator.validate(raw_cfg)
+        _validate_raw_config(raw_cfg, validator)
         normalized_cfg = normalizer.normalize(raw_cfg).to_dict()
         identity = build_experiment_identity(normalized_cfg)
         stream.write(
@@ -366,6 +366,22 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
     )
     executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
     return runtime_cfg, executor, runtime_state
+
+
+def _validate_raw_config(raw_cfg: dict[str, Any], validator: ConfigValidator) -> None:
+    graph_registry = build_default_graph_registry()
+    interaction_registry = build_default_interaction_registry()
+    registrars = list(raw_cfg.get("runtime", {}).get("plugin_registrars", []))
+    if registrars:
+        apply_runtime_registrars(
+            registrars,
+            graph_registry=graph_registry,
+            interaction_registry=interaction_registry,
+        )
+    ConfigValidator(
+        graph_registry=graph_registry,
+        interaction_registry=interaction_registry,
+    ).validate(raw_cfg)
 
 
 def _logs_dir(runtime_state: dict[str, Any], run_id: str) -> Path:

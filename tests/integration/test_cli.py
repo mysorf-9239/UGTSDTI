@@ -118,6 +118,59 @@ def test_cli_validate_does_not_dispatch_runtime_handlers(tmp_path):
     assert buffer.getvalue().strip() == "VALID"
 
 
+def test_cli_validate_custom_plugin_without_registrar_fails_closed(tmp_path):
+    cfg = _valid_cfg()
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.echo",
+            "inputs": ["drug_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    config_path = tmp_path / "missing_registrar.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["validate", str(config_path)], stdout=buffer)
+
+    assert exit_code == 1
+    assert "unregistered plugin type 'encoder.echo'" in buffer.getvalue()
+
+
+def test_cli_validate_invalid_registrar_path_fails_closed(tmp_path):
+    cfg = _valid_cfg()
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.echo",
+            "inputs": ["drug_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    cfg["runtime"] = {"plugin_registrars": ["tests.support_plugins.missing_registrar"]}
+    config_path = tmp_path / "invalid_registrar.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["validate", str(config_path)], stdout=buffer)
+
+    assert exit_code == 1
+    assert "not callable" in buffer.getvalue() or "Could not import runtime registrar module" in buffer.getvalue()
+
+
 def test_cli_sweep_resolves_normalized_parameter_targets(tmp_path):
     cfg = _valid_cfg()
     cfg["sweep"] = {

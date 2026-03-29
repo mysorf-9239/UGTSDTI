@@ -154,11 +154,11 @@ Có 4 checkpoint:
     - train -> checkpoint -> eval -> artifact chain
     - _Requirements: REQ-HARD-010_
 
-- [ ] 12. Hardening custom plugin usability
-  - [ ] 12.1 Nâng plugin registration flow cho validator-aware runtime
+- [x] 12. Hardening custom plugin usability
+  - [x] 12.1 Nâng plugin registration flow cho validator-aware runtime
     - Load plugin registrars trước plugin-aware validation khi cần
     - _Requirements: REQ-HARD-011_
-  - [ ] 12.2 Viết integration tests cho custom plugin path
+  - [x] 12.2 Viết integration tests cho custom plugin path
     - Missing registrar
     - Invalid registrar
     - Valid custom node/interaction plugin

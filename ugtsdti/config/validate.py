@@ -71,6 +71,15 @@ class ConfigValidator:
     Fail-fast: the first violation raises immediately with a descriptive error.
     """
 
+    def __init__(
+        self,
+        *,
+        graph_registry: Any | None = None,
+        interaction_registry: Any | None = None,
+    ) -> None:
+        self._graph_registry = graph_registry
+        self._interaction_registry = interaction_registry
+
     def validate(self, cfg: dict[str, Any]) -> None:
         """Run all validation steps in order.
 
@@ -135,6 +144,32 @@ class ConfigValidator:
                 stage="config_validate",
                 key="graph.nodes",
             )
+        if self._graph_registry is not None:
+            iterable = nodes.items() if isinstance(nodes, dict) else enumerate(nodes)
+            for node_name, node_cfg in iterable:
+                if not isinstance(node_cfg, dict):
+                    continue
+                type_key = str(node_cfg.get("type_key", node_cfg.get("type", "")))
+                if not type_key:
+                    continue
+                try:
+                    spec = self._graph_registry.get_spec(type_key)
+                except Exception as exc:
+                    raise InvalidConfigError(
+                        f"Graph node {node_name!r} references unregistered plugin type {type_key!r}. "
+                        "Load the required runtime.plugin_registrars before validation.",
+                        stage="config_validate",
+                        key=f"graph.nodes.{node_name}",
+                    ) from exc
+                declared_attrs = set(node_cfg.get("output_attrs", []))
+                spec_attrs = set(getattr(spec, "output_attrs", []))
+                if declared_attrs and spec_attrs and not declared_attrs.issubset(spec_attrs):
+                    raise InvalidConfigError(
+                        f"Graph node {node_name!r} declares output attrs {sorted(declared_attrs)} "
+                        f"which are incompatible with plugin spec {sorted(spec_attrs)} for type {type_key!r}.",
+                        stage="config_validate",
+                        key=f"graph.nodes.{node_name}.output_attrs",
+                    )
 
     def _check_roles_schema(self, cfg: dict[str, Any]) -> None:
         roles = cfg.get("roles", {})
@@ -229,6 +264,16 @@ class ConfigValidator:
                     stage="config_validate",
                     key=f"interaction.{mod_name}.type",
                 )
+            if self._interaction_registry is not None:
+                try:
+                    self._interaction_registry.get_spec(type_key)
+                except Exception as exc:
+                    raise InvalidConfigError(
+                        f"Interaction module '{mod_name}' references unregistered plugin type {type_key!r}. "
+                        "Load the required runtime.plugin_registrars before validation.",
+                        stage="config_validate",
+                        key=f"interaction.{mod_name}.type",
+                    ) from exc
 
     def _check_decision_schema(self, cfg: dict[str, Any]) -> None:
         decision = cfg.get("decision", {})
