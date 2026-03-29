@@ -394,17 +394,17 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Sweep targets tối thiểu: KD temperature, KD weight, uncertainty sample count, decision strategy, teacher freeze policy, student modality assignment
     - _Requirements: REQ-ABL-001, REQ-CONF-003, REQ-OPS-002_
 
-- [ ] 18. Xây dựng artifacts và spec collateral/ — Reproducibility Bundle, Traceability, Performance Hardening
-  - [ ] 18.1 Triển khai artifact writer
+- [x] 18. Xây dựng artifacts và spec collateral/ — Reproducibility Bundle, Traceability, Performance Hardening
+  - [x] 18.1 Triển khai artifact writer
     - Tạo `artifacts/<run_id>/` với: `config.yaml`, `identity.json`, `metrics.json`, `diagnostics.json`, `split_manifest.json`, `model.pt`, `logs/`
     - Nếu tracing bật: lưu execution trace và state boundary summaries
     - _Requirements: REQ-REPRO-002, REQ-GRAPH-003_
-  - [ ] 18.2 Viết tests cho reproducibility bundle và performance/concurrency invariants
+  - [x] 18.2 Viết tests cho reproducibility bundle và performance/concurrency invariants
     - Test artifact bundle chứa đủ metadata cần thiết
     - Test reproducibility tuple ổn định dù `run_id` và `timestamp` khác nhau
     - Test planner/executor không dựa vào shared mutable state và không deep-copy full State như default behavior
     - _Requirements: REQ-REPRO-002, REQ-QUAL-004_
-  - [ ] 18.3 Đồng bộ spec collateral sau implementation
+  - [x] 18.3 Đồng bộ spec collateral sau implementation
     - Update `traceability.md` theo REQ IDs mới, design sections, tasks, và test coverage dự kiến
     - Update configs mẫu để phản ánh identity decision module ở minimal baseline và soft blending ở full pipeline
     - _Requirements: REQ-ABL-001, REQ-REPRO-002_
