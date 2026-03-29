@@ -1,0 +1,27 @@
+name: ugtsdti-kaggle
+channels:
+  - pytorch
+  - pyg
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+
+  # Pinned versions for Kaggle reproducibility
+  - numpy=1.24.3
+  - pandas=2.0.3
+  - scikit-learn=1.3.0
+  - tqdm=4.65.0
+  - pyyaml=6.0
+
+  - pip:
+    # Pinned torch — no wandb on Kaggle
+    - torch==2.1.0
+    - torch_geometric==2.3.1
+    - transformers==4.35.0
+    - rdkit==2023.3.3
+    - loguru==0.7.2
+    - PyTDC==0.4.1
+    - -e .

@@ -1,0 +1,48 @@
+repos:
+  # General file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # Linting + formatting (ruff replaces black + isort + flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Type checking
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy type check
+        entry: mypy ugtsdti/ --strict
+        language: python
+        types: [python]
+        pass_filenames: false
+
+  # Config validation — runs on any YAML change under configs/
+  - repo: local
+    hooks:
+      - id: validate-config
+        name: Validate YAML configs
+        entry: python -m ugtsdti validate --config
+        language: python
+        files: ^configs/.*\.yaml$
+        pass_filenames: true
+
+  # Interaction dependency validation
+  - repo: local
+    hooks:
+      - id: validate-interaction-deps
+        name: Validate interaction graph dependencies
+        entry: python -c "from ugtsdti.config.validate import validate_only; import sys; [validate_only(f) for f in sys.argv[1:]]"
+        language: python
+        files: ^configs/.*\.yaml$
+        pass_filenames: true
