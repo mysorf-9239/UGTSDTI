@@ -204,27 +204,27 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
   - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
   - _Requirements: REQ-ARCH-002, REQ-ROLE-001, REQ-DATA-003_
 
-- [ ] 10. Xây dựng advanced interaction/ — KD, Uncertainty, Diagnostics
-  - [ ] 10.1 Triển khai KD interaction module trong `ugtsdti/interaction/kd.py`
+- [x] 10. Xây dựng advanced interaction/ — KD, Uncertainty, Diagnostics
+  - [x] 10.1 Triển khai KD interaction module trong `ugtsdti/interaction/kd.py`
     - Hỗ trợ modes: logits, feature, relation
     - Logits mode: `binary_logits_to_dist(logits, temperature)` → shape `(B, 2)`
     - Emit: `interaction.kd.loss_component`, `kd.teacher_target`, `kd.student_target`
     - Hỗ trợ temperature > 0, enable/disable, scenario-aware activation
     - _Requirements: REQ-INT-002_
-  - [ ] 10.2 Viết tests cho KD logits distribution và explicit outputs
+  - [x] 10.2 Viết tests cho KD logits distribution và explicit outputs
     - Test `binary_logits_to_dist` luôn tạo distribution hợp lệ
     - Test teacher → student direction là mặc định
     - Test output keys stable và hợp naming contract
     - _Requirements: REQ-INT-002, REQ-ARCH-004, REQ-QUAL-002_
-  - [ ] 10.3 Triển khai uncertainty interaction module trong `ugtsdti/interaction/uncertainty.py`
+  - [x] 10.3 Triển khai uncertainty interaction module trong `ugtsdti/interaction/uncertainty.py`
     - Hỗ trợ teacher-only, student-only, hoặc both
     - Emit: `teacher.var`, `student.var` — finite và non-negative
     - _Requirements: REQ-INT-003_
-  - [ ] 10.4 Viết tests cho uncertainty outputs
+  - [x] 10.4 Viết tests cho uncertainty outputs
     - Test uncertainty outputs luôn finite và non-negative với mọi valid input
     - Test teacher-only và student-only paths
     - _Requirements: REQ-INT-003, REQ-QUAL-002_
-  - [ ] 10.5 Triển khai diagnostics interaction module trong `ugtsdti/interaction/diagnostics.py`
+  - [x] 10.5 Triển khai diagnostics interaction module trong `ugtsdti/interaction/diagnostics.py`
     - Emit: `interaction.disagreement` và calibration helper stats
     - Ownership explicit, output keys stable
     - _Requirements: REQ-POST-002, REQ-ARCH-004_

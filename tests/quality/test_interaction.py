@@ -9,8 +9,11 @@ import pytest
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import InvalidInteractionGraphError, MissingDependencyError
 from ugtsdti.interaction.base import InteractionPluginSpec, InteractionRuntime
+from ugtsdti.interaction.diagnostics import DiagnosticsInteraction, diagnostics_output_keys
+from ugtsdti.interaction.kd import KDInteraction, binary_logits_to_dist, kd_output_keys
 from ugtsdti.interaction.noop import NoOpInteraction
 from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
+from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
 
 
 class _StubRuntime(InteractionRuntime):
@@ -112,3 +115,124 @@ class TestNoOpInteraction:
             ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
         )
         assert outputs == {}
+
+
+class TestKDInteraction:
+    def test_binary_logits_to_dist_returns_valid_distribution(self):
+        torch = pytest.importorskip("torch")
+        logits = torch.tensor([[0.0], [2.0], [-1.0]])
+        dist = binary_logits_to_dist(logits, temperature=2.0)
+
+        assert dist.shape == (3, 2)
+        assert torch.all(dist >= 0)
+        assert torch.allclose(dist.sum(dim=-1), torch.ones(3))
+
+    def test_kd_logits_mode_emits_explicit_targets_and_loss(self):
+        torch = pytest.importorskip("torch")
+        runtime = KDInteraction(mode="logits", temperature=2.0)
+        outputs = runtime.forward(
+            {
+                "teacher.logits": torch.tensor([[2.0], [0.0]]),
+                "student.logits": torch.tensor([[0.5], [-0.5]]),
+            },
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert set(outputs) == set(kd_output_keys({}))
+        assert outputs["kd.teacher_target"].shape == (2, 2)
+        assert outputs["kd.student_target"].shape == (2, 2)
+        assert outputs["interaction.kd.loss_component"].shape == ()
+        assert outputs["interaction.kd.loss_component"].item() >= 0.0
+
+    def test_kd_feature_and_relation_modes_are_supported(self):
+        torch = pytest.importorskip("torch")
+        features = {
+            "teacher.features": torch.tensor([[1.0, 0.0], [0.0, 1.0]]),
+            "student.features": torch.tensor([[0.9, 0.1], [0.2, 0.8]]),
+        }
+
+        feature_outputs = KDInteraction(
+            mode="feature",
+            teacher_key="teacher.features",
+            student_key="student.features",
+        ).forward(features, ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False))
+        relation_outputs = KDInteraction(
+            mode="relation",
+            teacher_key="teacher.features",
+            student_key="student.features",
+        ).forward(features, ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False))
+
+        assert feature_outputs["interaction.kd.loss_component"].item() >= 0.0
+        assert relation_outputs["interaction.kd.loss_component"].item() >= 0.0
+
+    def test_kd_default_direction_is_teacher_to_student(self):
+        torch = pytest.importorskip("torch")
+        runtime = KDInteraction(mode="logits", temperature=1.0)
+        teacher_logits = torch.tensor([[4.0], [-2.0]])
+        student_logits = torch.tensor([[0.0], [0.0]])
+        outputs = runtime.forward(
+            {"teacher.logits": teacher_logits, "student.logits": student_logits},
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        expected_teacher = binary_logits_to_dist(teacher_logits, temperature=1.0)
+        assert torch.allclose(outputs["kd.teacher_target"], expected_teacher)
+
+
+class TestUncertaintyInteraction:
+    def test_uncertainty_outputs_are_finite_and_non_negative(self):
+        torch = pytest.importorskip("torch")
+        runtime = UncertaintyInteraction(targets={"teacher": True, "student": True})
+        outputs = runtime.forward(
+            {
+                "teacher.logits": torch.tensor(
+                    [
+                        [[0.0], [1.0]],
+                        [[0.2], [1.1]],
+                        [[-0.1], [0.9]],
+                    ]
+                ),
+                "student.logits": torch.tensor(
+                    [
+                        [[0.5], [0.4]],
+                        [[0.7], [0.3]],
+                        [[0.6], [0.2]],
+                    ]
+                ),
+            },
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert set(outputs) == set(uncertainty_output_keys({"targets": {"teacher": True, "student": True}}))
+        assert torch.all(torch.isfinite(outputs["teacher.var"]))
+        assert torch.all(torch.isfinite(outputs["student.var"]))
+        assert torch.all(outputs["teacher.var"] >= 0)
+        assert torch.all(outputs["student.var"] >= 0)
+
+    def test_uncertainty_supports_teacher_only_path(self):
+        torch = pytest.importorskip("torch")
+        runtime = UncertaintyInteraction(targets={"teacher": True, "student": False})
+        outputs = runtime.forward(
+            {"teacher.logits": torch.tensor([[[0.0]], [[0.1]], [[-0.1]]])},
+            ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert set(outputs) == {"teacher.var"}
+
+
+class TestDiagnosticsInteraction:
+    def test_diagnostics_emit_disagreement_and_confidence_stats(self):
+        torch = pytest.importorskip("torch")
+        runtime = DiagnosticsInteraction()
+        outputs = runtime.forward(
+            {
+                "teacher.logits": torch.tensor([[2.0], [1.0]]),
+                "student.logits": torch.tensor([[1.0], [-1.0]]),
+            },
+            ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
+        )
+
+        assert set(outputs) == set(diagnostics_output_keys({"emit_calibration": True}))
+        assert outputs["interaction.disagreement"].item() >= 0.0
+        assert 0.0 <= outputs["diagnostics.teacher_confidence"].item() <= 1.0
+        assert 0.0 <= outputs["diagnostics.student_confidence"].item() <= 1.0
