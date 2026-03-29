@@ -170,7 +170,7 @@ Có 4 checkpoint:
   - [x] 13.2 Cập nhật design/docs references nếu implementation đổi public surface
     - _Requirements: REQ-HARD-012_
 
-- [ ] 14. Checkpoint 4 — Research-ready hardening baseline
+- [x] 14. Checkpoint 4 — Research-ready hardening baseline
   - Verify:
     - S1–S4 protocol đúng semantics
     - interaction contracts fail-closed
