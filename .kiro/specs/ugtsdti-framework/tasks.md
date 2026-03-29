@@ -130,20 +130,20 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
     - Test invalid role key naming bị reject
     - _Requirements: REQ-ROLE-001, REQ-ARCH-004_
 
-- [ ] 5. Xây dựng interaction foundation/ — Static Contracts, Registry, No-op Path
-  - [ ] 5.1 Triển khai `InteractionPluginSpec`, `InteractionDefinition`, `InteractionRuntime` trong `ugtsdti/interaction/base.py`
+- [x] 5. Xây dựng interaction foundation/ — Static Contracts, Registry, No-op Path
+  - [x] 5.1 Triển khai `InteractionPluginSpec`, `InteractionDefinition`, `InteractionRuntime` trong `ugtsdti/interaction/base.py`
     - `InteractionPluginSpec` phải khai báo output keys đủ cho planning và producer-map validation
     - `InteractionDefinition`: name, type_key, inputs, params, dependencies
     - _Requirements: REQ-INT-001_
-  - [ ] 5.2 Triển khai `InteractionRegistry` và `InteractionPlanner` trong `ugtsdti/interaction/registry.py`
+  - [x] 5.2 Triển khai `InteractionRegistry` và `InteractionPlanner` trong `ugtsdti/interaction/registry.py`
     - Validate: execution order, dependency completeness, no cycles, single producer per key
     - Validate all declared inputs resolvable từ role outputs hoặc prior interaction outputs
     - Không suy luận outputs từ runtime instance; chỉ dùng interaction specs
     - _Requirements: REQ-INT-001, REQ-ARCH-003_
-  - [ ] 5.3 Triển khai built-in `noop` interaction path trong namespace `ugtsdti/interaction/`
+  - [x] 5.3 Triển khai built-in `noop` interaction path trong namespace `ugtsdti/interaction/`
     - Dùng cho minimal baseline để giữ stage boundary mà không emit research outputs
     - _Requirements: REQ-ARCH-001, REQ-INT-001_
-  - [ ] 5.4 Viết unit tests cho InteractionPlanner và no-op path
+  - [x] 5.4 Viết unit tests cho InteractionPlanner và no-op path
     - Test acyclicity, single producer per interaction key, unresolved input reporting
     - Test no-op interaction không phá state contracts
     - _Requirements: REQ-INT-001, REQ-ARCH-001_
