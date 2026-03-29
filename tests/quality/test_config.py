@@ -401,10 +401,15 @@ class TestModalityCompatibility:
     def test_valid_modality_subset_passes(self):
         assert_valid(_full_teacher_student_cfg())
 
-    def test_empty_modalities_passes(self):
+    def test_graph_input_requires_available_modality(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["graph"]["nodes"]["student_encoder"]["inputs"] = ["drug_graph", "protein_seq"]
+        assert_invalid(cfg, "modalities.available")
+
+    def test_empty_modalities_fail_when_graph_requires_modalities(self):
         cfg = _minimal_student_only_cfg()
         cfg["modalities"] = {"available": []}
-        assert_valid(cfg)
+        assert_invalid(cfg, "modalities.available")
 
 
 class TestTeacherStudentAvailability:

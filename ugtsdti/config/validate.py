@@ -43,6 +43,14 @@ REQUIRED_SECTIONS = [
 
 VALID_SCENARIOS = {"s1", "s2", "s3", "s4"}
 
+_INPUT_MODALITY_BY_KEY = {
+    "drug_seq": "sequence",
+    "protein_seq": "sequence",
+    "drug_graph": "structure",
+    "drug_id": "identifier",
+    "protein_id": "identifier",
+}
+
 
 # ---------------------------------------------------------------------------
 # ConfigValidator
@@ -232,7 +240,7 @@ class ConfigValidator:
     # --- 3a: roles reference valid graph outputs ----------------------
 
     def _collect_graph_output_keys(self, cfg: dict[str, Any]) -> set[str]:
-        """Collect all keys that graph nodes produce."""
+        """Collect all explicitly declared keys that graph nodes produce."""
         graph = cfg.get("graph", {})
         nodes = graph.get("nodes", {})
         produced: set[str] = set()
@@ -241,18 +249,8 @@ class ConfigValidator:
             for node_name, node_cfg in nodes.items():
                 if not isinstance(node_cfg, dict):
                     continue
-                # Explicit output_attrs list
                 for attr in node_cfg.get("output_attrs", []):
                     produced.add(f"{node_name}.{attr}")
-                # Infer from type: every node produces at least <name>.logits
-                # if it's a head, or <name>.embedding if it's an encoder.
-                # But we only infer if output_attrs is not declared.
-                if not node_cfg.get("output_attrs"):
-                    node_type = str(node_cfg.get("type", node_cfg.get("type_key", "")))
-                    if "head" in node_type:
-                        produced.add(f"{node_name}.logits")
-                    elif "encoder" in node_type or "fusion" in node_type:
-                        produced.add(f"{node_name}.embedding")
         elif isinstance(nodes, list):
             for node in nodes:
                 if not isinstance(node, dict):
@@ -260,12 +258,6 @@ class ConfigValidator:
                 node_name = node.get("name", "")
                 for attr in node.get("output_attrs", []):
                     produced.add(f"{node_name}.{attr}")
-                if not node.get("output_attrs"):
-                    node_type = str(node.get("type", node.get("type_key", "")))
-                    if "head" in node_type:
-                        produced.add(f"{node_name}.logits")
-                    elif "encoder" in node_type or "fusion" in node_type:
-                        produced.add(f"{node_name}.embedding")
 
         return produced
 
@@ -453,8 +445,6 @@ class ConfigValidator:
     def _check_modality_compatibility(self, cfg: dict[str, Any]) -> None:
         modalities = cfg.get("modalities", {})
         available = set(modalities.get("available", []))
-        if not available:
-            return
 
         teacher_uses = set(modalities.get("teacher", {}).get("uses", []))
         student_uses = set(modalities.get("student", {}).get("uses", []))
@@ -476,6 +466,32 @@ class ConfigValidator:
                 stage="config_validate",
                 component="modalities",
                 key="modalities.student.uses",
+            )
+
+        required_modalities: set[str] = set()
+        graph = cfg.get("graph", {})
+        nodes = graph.get("nodes", {})
+
+        iterable = nodes.values() if isinstance(nodes, dict) else nodes
+        for node in iterable:
+            if not isinstance(node, dict):
+                continue
+            for input_key in node.get("inputs", []):
+                modality = _INPUT_MODALITY_BY_KEY.get(input_key)
+                if modality is not None:
+                    required_modalities.add(modality)
+            for input_kind in node.get("input_kinds", []):
+                modality = _INPUT_MODALITY_BY_KEY.get(input_kind)
+                if modality is not None:
+                    required_modalities.add(modality)
+
+        missing_modalities = required_modalities - available
+        if missing_modalities:
+            raise InvalidConfigError(
+                f"Graph requires modalities {sorted(missing_modalities)} that are not in modalities.available.",
+                stage="config_validate",
+                component="modalities",
+                key="modalities.available",
             )
 
     # --- 3f: teacher/student availability vs KD/decision config ------
