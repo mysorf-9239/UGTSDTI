@@ -238,6 +238,13 @@ class ConfigValidator:
                 stage="config_validate",
                 key="decision",
             )
+        mode = str(decision.get("mode", "heuristic")).lower()
+        if mode not in {"heuristic", "learned"}:
+            raise InvalidConfigError(
+                f"Decision mode {mode!r} is unsupported. Expected 'heuristic' or 'learned'.",
+                stage="config_validate",
+                key="decision.mode",
+            )
 
     def _check_loss_schema(self, cfg: dict[str, Any]) -> None:
         loss = cfg.get("loss", {})
@@ -276,6 +283,7 @@ class ConfigValidator:
         self._check_loss_mappings(cfg)
         self._check_modality_compatibility(cfg)
         self._check_teacher_student_availability(cfg)
+        self._check_gate_semantics(cfg)
         self._check_baseline_noop_path(cfg)
 
     # --- 3a: roles reference valid graph outputs ----------------------
@@ -594,7 +602,33 @@ class ConfigValidator:
                         key="decision.strategy",
                     )
 
-    # --- 3g: baseline no-op path valid when teacher/KD disabled ------
+    # --- 3g: gate semantics clarity ----------------------------------
+
+    def _check_gate_semantics(self, cfg: dict[str, Any]) -> None:
+        decision = cfg.get("decision", {})
+        training = cfg.get("training", {})
+        decision_type = str(decision.get("type", "identity"))
+        decision_mode = str(decision.get("mode", "heuristic")).lower()
+        gate_trainable = bool(training.get("gate", {}).get("trainable", False))
+
+        if decision_mode == "learned" or decision_type == "gate.learned":
+            raise InvalidConfigError(
+                "Learned gate mode is declared in config, but no learned gate runtime is implemented yet.",
+                stage="config_validate",
+                component="decision",
+                key="decision.mode" if decision_mode == "learned" else "decision.type",
+            )
+
+        if gate_trainable:
+            raise InvalidConfigError(
+                "Config sets training.gate.trainable=true, but the current runtime only supports heuristic gates. "
+                "Set decision.mode='heuristic' and training.gate.trainable=false until a learned gate runtime exists.",
+                stage="config_validate",
+                component="training",
+                key="training.gate.trainable",
+            )
+
+    # --- 3h: baseline no-op path valid when teacher/KD disabled ------
 
     def _check_baseline_noop_path(self, cfg: dict[str, Any]) -> None:
         """Validate that the baseline no-op path is coherent.

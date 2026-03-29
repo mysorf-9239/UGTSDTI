@@ -115,6 +115,7 @@ def _cfg():
         },
         "decision": {
             "type": "gate.uncertainty",
+            "mode": "heuristic",
             "strategy": "soft",
             "use_uncertainty": True,
             "fallback": {"no_teacher": "student", "no_student": "teacher"},
@@ -123,7 +124,7 @@ def _cfg():
             "teacher": {"freeze": True},
             "student": {"freeze": False},
             "kd": {"schedule": "warmup", "warmup_steps": 2},
-            "gate": {"trainable": True},
+            "gate": {"trainable": False},
         },
         "loss": {
             "type": "composite",
@@ -221,10 +222,10 @@ def test_trainer_applies_kd_warmup_schedule():
     )
 
     assert result.kd_weight == pytest.approx(0.2)
-    assert result.freeze_policy == {"teacher": True, "student": False, "gate": True}
+    assert result.freeze_policy == {"teacher": True, "student": False, "gate": False}
     assert teacher_param.requires_grad is False
     assert student_param.requires_grad is True
-    assert gate_param.requires_grad is True
+    assert gate_param.requires_grad is False
 
 
 def test_trainer_writes_artifact_bundle_with_provided_model_state(tmp_path):

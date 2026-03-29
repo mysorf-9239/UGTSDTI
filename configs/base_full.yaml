@@ -96,6 +96,7 @@ interaction:
       emit_calibration: true
 decision:
   type: gate.uncertainty
+  mode: heuristic
   strategy: soft
   use_uncertainty: true
   fallback:
@@ -110,7 +111,7 @@ training:
     schedule: warmup
     warmup_steps: 5
   gate:
-    trainable: true
+    trainable: false
 loss:
   type: composite
   hard_weight: 1.0

@@ -27,8 +27,8 @@ _DEFAULT_INTERACTION: dict[str, Any] = {
 
 _DEFAULT_DECISION: dict[str, Any] = {
     "type": "identity",
+    "mode": "heuristic",
     "strategy": "identity",
-    "trainable": False,
     "use_uncertainty": False,
     "fallback": {},
 }
@@ -270,6 +270,8 @@ class ConfigNormalizer:
         if not isinstance(raw, dict):
             return copy.deepcopy(_DEFAULT_DECISION)
         result = {**_DEFAULT_DECISION, **copy.deepcopy(raw)}
+        if "type" in result and str(result.get("type")) == "identity":
+            result["mode"] = "heuristic"
         # Normalize fallback
         if not isinstance(result.get("fallback"), dict):
             result["fallback"] = {}

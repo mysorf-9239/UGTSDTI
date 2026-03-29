@@ -143,8 +143,8 @@ def _full_teacher_student_cfg() -> dict:
         },
         "decision": {
             "type": "gate.uncertainty",
+            "mode": "heuristic",
             "strategy": "soft",
-            "trainable": True,
             "use_uncertainty": True,
             "fallback": {"no_teacher": "student", "no_student": "teacher"},
         },
@@ -152,7 +152,7 @@ def _full_teacher_student_cfg() -> dict:
             "teacher": {"freeze": True},
             "student": {"freeze": False},
             "kd": {"schedule": "warmup"},
-            "gate": {"trainable": True},
+            "gate": {"trainable": False},
         },
         "loss": {
             "type": "composite",
@@ -509,8 +509,8 @@ class TestTeacherStudentAvailability:
         cfg = _minimal_student_only_cfg()
         cfg["decision"] = {
             "type": "gate.uncertainty",
+            "mode": "heuristic",
             "strategy": "soft",
-            "trainable": True,
             "fallback": {},  # no fallback configured
         }
         assert_invalid(cfg, "teacher")
@@ -519,11 +519,28 @@ class TestTeacherStudentAvailability:
         cfg = _minimal_student_only_cfg()
         cfg["decision"] = {
             "type": "gate.uncertainty",
+            "mode": "heuristic",
             "strategy": "soft",
-            "trainable": True,
             "fallback": {"no_teacher": "student"},
         }
         assert_valid(cfg)
+
+    def test_heuristic_gate_cannot_claim_trainable_runtime(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["training"]["gate"]["trainable"] = True
+        assert_invalid(cfg, "training.gate.trainable")
+
+    def test_learned_gate_mode_is_rejected_until_runtime_exists(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["decision"]["mode"] = "learned"
+        cfg["training"]["gate"]["trainable"] = False
+        assert_invalid(cfg, "learned gate runtime")
+
+    def test_learned_gate_type_is_rejected_until_runtime_exists(self):
+        cfg = _full_teacher_student_cfg()
+        cfg["decision"]["type"] = "gate.learned"
+        cfg["decision"]["mode"] = "learned"
+        assert_invalid(cfg, "learned gate runtime")
 
     def test_full_config_with_teacher_and_kd_passes(self):
         assert_valid(_full_teacher_student_cfg())

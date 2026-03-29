@@ -126,13 +126,13 @@ Có 4 checkpoint:
   - [x] 8.4 Viết tests cho uncertainty mode semantics
     - _Requirements: REQ-HARD-008_
 
-- [ ] 9. Siết gate semantics
-  - [ ] 9.1 Tách config surface giữa heuristic gate và learned gate
+- [x] 9. Siết gate semantics
+  - [x] 9.1 Tách config surface giữa heuristic gate và learned gate
     - _Requirements: REQ-HARD-009_
-  - [ ] 9.2 Nếu chưa có learned gate thực, reject `training.gate.trainable: true`
+  - [x] 9.2 Nếu chưa có learned gate thực, reject `training.gate.trainable: true`
     - Hoặc implement learned gate tối thiểu
     - _Requirements: REQ-HARD-009_
-  - [ ] 9.3 Viết tests cho gate semantic consistency
+  - [x] 9.3 Viết tests cho gate semantic consistency
     - _Requirements: REQ-HARD-009_
 
 - [ ] 10. Checkpoint 3 — Metric / uncertainty / identity semantics đúng
