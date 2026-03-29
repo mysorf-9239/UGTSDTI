@@ -240,21 +240,21 @@ Có 5 checkpoint tương ứng với 5 mốc pipeline hoạt động được:
   - Đảm bảo tất cả tests pass, hỏi user nếu có vấn đề.
   - _Requirements: REQ-INT-002, REQ-POST-001, REQ-ABL-001_
 
-- [ ] 12. Xây dựng advanced decision/ — Trust, Policy, Soft/Hard Modules
-  - [ ] 12.1 Triển khai `TrustEstimator` trong `ugtsdti/decision/trust.py`
+- [x] 12. Xây dựng advanced decision/ — Trust, Policy, Soft/Hard Modules
+  - [x] 12.1 Triển khai `TrustEstimator` trong `ugtsdti/decision/trust.py`
     - Tính trust signals: alpha, raw gate features, uncertainty-aware scores
     - _Requirements: REQ-DEC-002_
-  - [ ] 12.2 Triển khai `DecisionPolicy` trong `ugtsdti/decision/policy.py`
+  - [x] 12.2 Triển khai `DecisionPolicy` trong `ugtsdti/decision/policy.py`
     - Biến trust signals + branch logits thành final `logits`
     - _Requirements: REQ-DEC-002_
-  - [ ] 12.3 Triển khai `SoftBlendingDecisionModule` và `HardSelectionDecisionModule` trong `ugtsdti/decision/module.py`
+  - [x] 12.3 Triển khai `SoftBlendingDecisionModule` và `HardSelectionDecisionModule` trong `ugtsdti/decision/module.py`
     - `SoftBlendingDecisionModule`: `y = alpha * y_teacher + (1 - alpha) * y_student`
     - `HardSelectionDecisionModule`: chọn branch theo threshold/rule
     - Enforce output namespace `logits`, optional `gate.alpha`, optional `gate.*`
     - Fallback order: normal → single-branch → configured fallback → explicit failure
     - Validate: required inputs tồn tại, alpha finite và `[0, 1]`, final logits finite
     - _Requirements: REQ-DEC-001, REQ-DEC-002, REQ-ARCH-004, REQ-QUAL-002_
-  - [ ] 12.4 Viết unit tests cho decision fallback và output validation
+  - [x] 12.4 Viết unit tests cho decision fallback và output validation
     - Test teacher absent → single-branch fallback
     - Test uncertainty unavailable → configured fallback
     - Test invalid alpha range hoặc malformed `gate.*` outputs bị reject
