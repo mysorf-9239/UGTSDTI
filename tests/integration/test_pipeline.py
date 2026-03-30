@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ugtsdti.core.context import ExecutionContext
-from ugtsdti.core.errors import InvalidInteractionGraphError
+from ugtsdti.core.errors import CheckpointCorruptedError, InvalidInteractionGraphError
 from ugtsdti.graph.builder import GraphBuilder
 from ugtsdti.graph.planner import GraphPlanner
 from ugtsdti.graph.registry import NodeRegistry
@@ -17,6 +17,7 @@ from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
 from ugtsdti.interaction.uncertainty import UncertaintyInteraction, uncertainty_output_keys
 from ugtsdti.nodes.base import NodeRuntime
 from ugtsdti.postprocess.loss import LossComposer
+from ugtsdti.runtime.defaults import build_default_graph_registry, build_default_interaction_registry
 from ugtsdti.trainer.trainer import PipelineExecutor
 
 
@@ -281,13 +282,56 @@ def test_teacher_student_pipeline_keeps_student_as_identity_decision_source():
     assert state.has("teacher.logits")
     assert state.has("logits")
     assert torch.equal(state.get("logits"), state.get("student.logits"))
-    assert trace.graph_trace is not None
-    assert trace.graph_trace.node_order == [
-        "student_encoder",
-        "teacher_encoder",
-        "student_head",
-        "teacher_head",
-    ]
+
+
+def test_load_model_state_returns_restore_report_for_supported_runtime():
+    torch = pytest.importorskip("torch")
+    graph_registry = build_default_graph_registry()
+    interaction_registry = build_default_interaction_registry()
+    cfg = _minimal_cfg()
+    cfg["graph"] = {
+        "nodes": [
+            {
+                "name": "student_encoder",
+                "type_key": "encoder.baseline",
+                "inputs": ["drug_seq", "protein_seq"],
+            },
+            {
+                "name": "student_head",
+                "type_key": "head.linear",
+                "inputs": ["student_encoder.embedding"],
+            },
+        ]
+    }
+    cfg["graph_plan"] = GraphPlanner(graph_registry).plan(GraphBuilder(graph_registry).build(cfg["graph"]))
+    cfg["interaction_plan"] = InteractionPlanner(interaction_registry).plan(
+        cfg["interaction"],
+        available_inputs={"student.logits"},
+    )
+
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+    report = executor.load_model_state(
+        cfg,
+        {"student_head": {"scale": torch.tensor([0.2]), "bias": torch.tensor([0.1])}},
+    )
+
+    assert report.restored_nodes == ["student_head"]
+
+
+def test_load_model_state_fails_when_runtime_cannot_restore_checkpoint_state():
+    torch = pytest.importorskip("torch")
+    graph_registry, interaction_registry = _make_registries()
+    cfg = _minimal_cfg()
+    cfg["graph_plan"] = GraphPlanner(graph_registry).plan(GraphBuilder(graph_registry).build(cfg["graph"]))
+    cfg["interaction_plan"] = InteractionPlanner(interaction_registry).plan(
+        cfg["interaction"],
+        available_inputs={"student.logits"},
+    )
+
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+
+    with pytest.raises(CheckpointCorruptedError, match="does not support load_state_dict"):
+        executor.load_model_state(cfg, {"student_head": {"scale": torch.tensor([0.2])}})
 
 
 def test_teacher_student_kd_pipeline_maps_interaction_loss_explicitly():

@@ -164,6 +164,45 @@ def test_checkpoint_io_round_trips_tensor_state(tmp_path):
     assert torch.equal(loaded.optimizer_state["momentum"], torch.tensor([0.5]))
 
 
+def test_checkpoint_load_unknown_model_node_is_rejected_by_executor():
+    from ugtsdti.graph.builder import GraphBuilder
+    from ugtsdti.graph.planner import GraphPlanner
+    from ugtsdti.interaction.base import InteractionPluginSpec
+    from ugtsdti.interaction.noop import NoOpInteraction
+    from ugtsdti.interaction.registry import InteractionPlanner, InteractionRegistry
+    from ugtsdti.runtime.defaults import build_default_graph_registry
+    from ugtsdti.trainer.trainer import PipelineExecutor
+
+    graph_registry = build_default_graph_registry()
+    interaction_registry = InteractionRegistry()
+    interaction_registry.register(
+        InteractionPluginSpec(type_key="noop", output_keys_fn=lambda params: []),
+        NoOpInteraction,
+    )
+    cfg = {
+        "graph": {
+            "nodes": [
+                {"name": "student_encoder", "type_key": "encoder.baseline", "inputs": ["drug_seq", "protein_seq"]},
+                {"name": "student_head", "type_key": "head.linear", "inputs": ["student_encoder.embedding"]},
+            ]
+        },
+        "interaction": {
+            "order": ["noop"],
+            "dependencies": {},
+            "noop": {"type": "noop", "inputs": ["student.logits"]},
+        },
+    }
+    cfg["graph_plan"] = GraphPlanner(graph_registry).plan(GraphBuilder(graph_registry).build(cfg["graph"]))
+    cfg["interaction_plan"] = InteractionPlanner(interaction_registry).plan(
+        cfg["interaction"],
+        available_inputs={"student.logits"},
+    )
+    executor = PipelineExecutor(graph_registry=graph_registry, interaction_registry=interaction_registry)
+
+    with pytest.raises(CheckpointCorruptedError, match="unknown graph node"):
+        executor.load_model_state(cfg, {"missing_node": {"weight": 1}})
+
+
 def test_file_logger_and_composite_logger_write_outputs(tmp_path):
     file_logger = FileLogger(tmp_path / "logs")
     composite = CompositeLogger([file_logger, WandbLogger(project="test", enabled=False)])

@@ -80,17 +80,17 @@ Có 4 checkpoint:
   - [x] 5.3 Viết unit/integration tests cho missing declared input
     - _Requirements: REQ-INTG-004_
 
-- [ ] 6. Hardening checkpoint restore integrity
-  - [ ] 6.1 Mở rộng `PipelineExecutor.load_model_state()` thành fail-closed restore path
+- [x] 6. Hardening checkpoint restore integrity
+  - [x] 6.1 Mở rộng `PipelineExecutor.load_model_state()` thành fail-closed restore path
     - Unknown node -> fail
     - Known node nhưng runtime không restore được -> fail
     - _Requirements: REQ-INTG-005_
-  - [ ] 6.2 Thiết kế restore report hoặc explicit restore summary
+  - [x] 6.2 Thiết kế restore report hoặc explicit restore summary
     - restored / skipped / failed nodes
     - _Requirements: REQ-INTG-005_
-  - [ ] 6.3 Đồng bộ eval/resume path trong CLI với restore integrity
+  - [x] 6.3 Đồng bộ eval/resume path trong CLI với restore integrity
     - _Requirements: REQ-INTG-005_
-  - [ ] 6.4 Viết tests cho partial restore, unsupported restore, unknown node state
+  - [x] 6.4 Viết tests cho partial restore, unsupported restore, unknown node state
     - _Requirements: REQ-INTG-005_
 
 - [ ] 7. Checkpoint 2 — Runtime contracts fail-closed

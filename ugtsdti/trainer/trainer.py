@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
-from ugtsdti.core.errors import BatchSchemaError, InvalidConfigError
+from ugtsdti.core.errors import BatchSchemaError, CheckpointCorruptedError, InvalidConfigError
 from ugtsdti.core.schema import StateSchemaBuilder
 from ugtsdti.core.state import State, StateWriter
 from ugtsdti.decision.base import DecisionModule
@@ -49,6 +49,13 @@ class TrainStepResult:
     logged_metrics: dict[str, float]
     freeze_policy: dict[str, bool]
     kd_weight: float | None = None
+
+
+@dataclass
+class ModelRestoreReport:
+    """Summary of graph runtime state restored from a checkpoint payload."""
+
+    restored_nodes: list[str] = field(default_factory=list)
 
 
 class PipelineExecutor:
@@ -244,8 +251,8 @@ class PipelineExecutor:
                 state[node_name] = state_dict()
         return state
 
-    def load_model_state(self, cfg: dict[str, Any], model_state: dict[str, Any]) -> None:
-        """Load runtime state into graph nodes when supported by their runtimes."""
+    def load_model_state(self, cfg: dict[str, Any], model_state: dict[str, Any]) -> ModelRestoreReport:
+        """Load runtime state into graph nodes with fail-closed restore semantics."""
         if not isinstance(model_state, dict):
             raise InvalidConfigError(
                 "Model state must be a mapping of node_name -> state_dict.",
@@ -255,18 +262,28 @@ class PipelineExecutor:
             )
         plan = cfg["graph_plan"]
         definitions = plan.definition_map()
+        report = ModelRestoreReport()
         for node_name, node_state in model_state.items():
             if node_name not in definitions:
-                raise InvalidConfigError(
-                    f"Model state references unknown graph node {node_name!r}.",
+                raise CheckpointCorruptedError(
+                    f"Checkpoint model state references unknown graph node {node_name!r}.",
                     stage="runtime",
                     component="PipelineExecutor",
                     key=f"model_state.{node_name}",
                 )
             runtime = self._graph_engine.ensure_runtime(definitions[node_name])
             load_state_dict = getattr(runtime, "load_state_dict", None)
-            if callable(load_state_dict):
-                load_state_dict(node_state)
+            if not callable(load_state_dict):
+                raise CheckpointCorruptedError(
+                    f"Checkpoint contains state for graph node {node_name!r}, "
+                    "but its runtime does not support load_state_dict().",
+                    stage="runtime",
+                    component="PipelineExecutor",
+                    key=f"model_state.{node_name}",
+                )
+            load_state_dict(node_state)
+            report.restored_nodes.append(node_name)
+        return report
 
 
 class Trainer:
