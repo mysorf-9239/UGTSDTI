@@ -1,29 +1,77 @@
-#!/usr/bin/env python3
-"""Materialize a tiny synthetic artifact set for the baseline reference config."""
+"""One-file baseline workflow: prepare fixture artifacts and run validate/train/eval."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import yaml
+
+from ugtsdti.cli.main import run_cli
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Create synthetic processed/split artifacts for baseline smoke runs.")
-    parser.add_argument("--data-dir", default="data", help="Root artifact directory to populate.")
-    parser.add_argument("--dataset", default="davis", help="Dataset name used by the baseline config.")
-    parser.add_argument("--preprocessing-version", default="v1", help="Preprocessing version folder.")
-    parser.add_argument("--split-version", default="v1", help="Split version folder.")
+    parser = argparse.ArgumentParser(description="Run the baseline reference end-to-end on a synthetic fixture.")
+    parser.add_argument("--root", default=None, help="Repo root. Defaults to the parent of examples/.")
+    parser.add_argument("--data-dir", default=None, help="Artifact data dir. Defaults to <root>/data.")
+    parser.add_argument("--artifacts-dir", default=None, help="Artifacts output dir. Defaults to <root>/artifacts.")
+    parser.add_argument("--checkpoint-dir", default=None, help="Checkpoint output dir. Defaults to <root>/checkpoints.")
+    parser.add_argument("--epochs", type=int, default=1, help="Number of training epochs for the smoke run.")
+    parser.add_argument("--batch-size", type=int, default=2, help="Runtime batch size.")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    data_dir = Path(args.data_dir).resolve()
-    processed_dir = data_dir / "processed" / args.dataset / args.preprocessing_version
-    split_dir = data_dir / "splits" / args.dataset / args.preprocessing_version / args.split_version
+    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
+    data_dir = Path(args.data_dir).resolve() if args.data_dir else root / "data"
+    artifacts_dir = Path(args.artifacts_dir).resolve() if args.artifacts_dir else root / "artifacts"
+    checkpoint_dir = Path(args.checkpoint_dir).resolve() if args.checkpoint_dir else root / "checkpoints"
+    config_path = root / "configs" / "baseline_reference.yaml"
 
+    _prepare_fixture_artifacts(data_dir)
+
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["runtime"] = {
+        "data_dir": str(data_dir),
+        "artifacts_dir": str(artifacts_dir),
+        "checkpoint_dir": str(checkpoint_dir),
+        "batch_size": int(args.batch_size),
+        "seed": 7,
+    }
+    config["training"]["loop"] = {
+        "epochs": max(1, int(args.epochs)),
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 1,
+        "eval_partition": "test",
+    }
+
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
+        temp_config = Path(handle.name)
+        yaml.safe_dump(config, handle, sort_keys=False)
+
+    try:
+        print(f"[baseline] validate -> {temp_config}")
+        if run_cli(["validate", str(temp_config)]) != 0:
+            return 1
+
+        print("[baseline] train")
+        if run_cli(["train", str(temp_config)]) != 0:
+            return 1
+
+        print("[baseline] eval")
+        return run_cli(["eval", str(temp_config)])
+    finally:
+        temp_config.unlink(missing_ok=True)
+
+
+def _prepare_fixture_artifacts(data_dir: Path) -> None:
+    processed_dir = data_dir / "processed" / "davis" / "v1"
+    split_dir = data_dir / "splits" / "davis" / "v1" / "v1"
     processed_dir.mkdir(parents=True, exist_ok=True)
     split_dir.mkdir(parents=True, exist_ok=True)
 
@@ -42,9 +90,9 @@ def main() -> int:
             scenario_partitions[scenario][partition] = str(path)
 
     dataset_version = {
-        "dataset": args.dataset,
+        "dataset": "davis",
         "dataset_version": "synthetic-baseline-v1",
-        "preprocessing_version": args.preprocessing_version,
+        "preprocessing_version": "v1",
         "record_count": sum(sum(len(records) for records in partitions.values()) for partitions in rows.values()),
         "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
     }
@@ -54,9 +102,9 @@ def main() -> int:
     )
 
     manifest = {
-        "dataset": args.dataset,
-        "preprocessing_version": args.preprocessing_version,
-        "split_version": args.split_version,
+        "dataset": "davis",
+        "preprocessing_version": "v1",
+        "split_version": "v1",
         "seed": 7,
         "scenarios": ["s1", "s2", "s3", "s4"],
         "partitions": ["train", "val", "test"],
@@ -68,18 +116,6 @@ def main() -> int:
         },
     }
     (split_dir / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
-
-    print(
-        json.dumps(
-            {
-                "data_dir": str(data_dir),
-                "dataset_version": str(processed_dir / "dataset_version.json"),
-                "manifest": str(split_dir / "manifest.json"),
-            },
-            sort_keys=True,
-        )
-    )
-    return 0
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
