@@ -72,20 +72,12 @@ Available environments: `conda-recipes/base.yaml`, `conda-recipes/dev.yaml`, `co
 python -m ugtsdti validate configs/baseline_reference.yaml
 ```
 
-### Baseline Run Matrix
-
-| Workflow | Purpose | Entry point |
-| --- | --- | --- |
-| Synthetic smoke | CI / local sanity check, no real data required | [examples/baseline.py](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/examples/baseline.py), [scripts/baseline.sh](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/baseline.sh) |
-| Real artifact-backed baseline | Train/eval on prepared `processed/` + `splits/` artifacts | [scripts/baseline_real.sh](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/baseline_real.sh) |
-| Data preparation for real baseline | Materialize raw/PyTDC data into artifact-backed layout | [scripts/prepare_baseline_artifacts.py](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/prepare_baseline_artifacts.py) |
-
 ### Synthetic smoke workflow
 
 ```bash
 conda activate ugtsdti
 cd UGTSDTI
-bash scripts/baseline.sh
+python examples/baseline.py
 ```
 
 This path creates a synthetic fixture and runs `validate -> train -> eval`. It is for engineering smoke only, not for reporting research metrics.
@@ -109,13 +101,13 @@ python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
 2. Validate a baseline profile:
 
 ```bash
-python -m ugtsdti validate configs/profiles/baseline_cpu.yaml
+python -m ugtsdti validate configs/profiles/baseline_local.yaml
 ```
 
 3. Train + evaluate with the selected checkpoint policy:
 
 ```bash
-bash scripts/baseline_real.sh configs/profiles/baseline_cpu.yaml
+bash scripts/baseline_real.sh configs/profiles/baseline_local.yaml
 ```
 
 `baseline_real.sh` always runs `validate -> train -> eval` and injects the chosen checkpoint (`best` or `last`) into the eval run.
@@ -143,10 +135,7 @@ UGTSDTI/
 ├── configs/
 │   ├── baseline_reference.yaml
 │   ├── profiles/baseline_local.yaml
-│   ├── profiles/baseline_cpu.yaml
-│   ├── profiles/baseline_gpu.yaml
-│   ├── profiles/baseline_kaggle.yaml
-│   └── profiles/baseline_wandb.yaml
+│   └── profiles/baseline_kaggle.yaml
 ├── conda-recipes/
 │   ├── base.yaml
 │   ├── dev.yaml
@@ -213,22 +202,21 @@ python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
 
 ## Configuration
 
-Experiments are fully config-driven. The canonical baseline graph lives in [configs/baseline_reference.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/baseline_reference.yaml), and deployment-ready profiles extend it:
+Experiments are fully config-driven. The canonical baseline graph lives in [configs/baseline_reference.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/baseline_reference.yaml), and only two deployment profiles are first-class:
 
 | Profile | Intended environment | Default paths / behavior |
 | --- | --- | --- |
-| [baseline_local.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_local.yaml) | local dev run | CPU, small batch, trace enabled |
-| [baseline_cpu.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_cpu.yaml) | local CPU training | CPU, deterministic, artifact-backed |
-| [baseline_gpu.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_gpu.yaml) | local GPU training | CUDA, mixed precision, pin memory |
+| [baseline_local.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_local.yaml) | local training | CPU-safe defaults, artifact-backed, can override `runtime.device: cuda` |
 | [baseline_kaggle.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_kaggle.yaml) | Kaggle GPU | `/kaggle/input/ugtsdti-data`, `/kaggle/working/artifacts/baseline` |
-| [baseline_wandb.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_wandb.yaml) | optional logging overlay | same as local baseline, `logging.backend: wandb` |
 
-Example baseline config:
+Minimal shape of the baseline config:
 
 ```yaml
 version: v1
 data:
   dataset: davis
+  preprocessing_version: v1
+  split_version: v1
 scenario:
   train: s1
   eval: [s1, s2, s3, s4]
@@ -238,12 +226,18 @@ modalities:
     uses: [sequence]
 graph:
   nodes:
-    student_encoder:
-      type: encoder.baseline
-      inputs: [drug_seq, protein_seq]
-    student_head:
-      type: head.linear
-      inputs: [student_encoder.embedding]
+    - name: drug_encoder
+      type: encoder.simple_drug
+      inputs: [drug_seq]
+    - name: protein_encoder
+      type: encoder.cnn_protein
+      inputs: [protein_seq]
+    - name: fusion
+      type: fusion.concat
+      inputs: [drug_encoder.embedding, protein_encoder.embedding]
+    - name: head
+      type: head.mlp
+      inputs: [fusion.embedding]
 roles:
   student:
     outputs: [head.logits]
@@ -256,7 +250,7 @@ loss:
   hard_weight: 1.0
 ```
 
-Config supports `extends` for inheritance and `sweep` for hyperparameter search.
+Use `baseline_reference.yaml` as the source of truth; profiles only override environment/runtime settings.
 
 ### `wandb`
 
@@ -266,11 +260,13 @@ To enable it:
 
 ```bash
 pip install -e ".[wandb]"
-python -m ugtsdti validate configs/profiles/baseline_wandb.yaml
-bash scripts/baseline_real.sh configs/profiles/baseline_wandb.yaml
+python -m ugtsdti validate configs/profiles/baseline_local.yaml
+bash scripts/baseline_real.sh configs/profiles/baseline_local.yaml
 ```
 
-The built-in logger initializes `wandb` in offline mode by default. Kaggle and local file logging both default to `logging.backend: file` unless you explicitly choose the `wandb` profile or override the config.
+Then set `logging.backend: wandb` in a derived config file that `extends` `configs/profiles/baseline_local.yaml`, or patch a temporary copy before running.
+
+The built-in logger initializes `wandb` in offline mode by default. Kaggle and local runs both default to `logging.backend: file` unless you explicitly override it.
 
 ---
 

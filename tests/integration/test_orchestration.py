@@ -305,10 +305,7 @@ def test_sample_ablation_and_sweep_configs_smoke_validate():
         "profiles/gpu.yaml",
         "profiles/kaggle.yaml",
         "profiles/baseline_local.yaml",
-        "profiles/baseline_cpu.yaml",
-        "profiles/baseline_gpu.yaml",
         "profiles/baseline_kaggle.yaml",
-        "profiles/baseline_wandb.yaml",
         "sweeps/full.yaml",
     ):
         raw = loader.load(base_dir / relative_path)

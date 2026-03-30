@@ -143,10 +143,7 @@ def test_baseline_profiles_smoke_validate_and_preserve_baseline_surface():
 
     for relative_path in (
         "baseline_local.yaml",
-        "baseline_cpu.yaml",
-        "baseline_gpu.yaml",
         "baseline_kaggle.yaml",
-        "baseline_wandb.yaml",
     ):
         raw = loader.load(_profile_root() / relative_path)
         validator.validate(raw)
@@ -161,15 +158,15 @@ def test_baseline_profiles_smoke_validate_and_preserve_baseline_surface():
         assert normalized["scenario"]["eval"] == ["s1", "s2", "s3", "s4"]
 
 
-def test_baseline_cpu_profile_runs_train_then_eval_on_artifact_fixture(tmp_path):
+def test_baseline_local_profile_runs_train_then_eval_on_artifact_fixture(tmp_path):
     _write_artifact_fixture(tmp_path / "data")
-    cfg = _baseline_profile("baseline_cpu.yaml")
+    cfg = _baseline_profile("baseline_local.yaml")
     cfg["runtime"]["data_dir"] = str(tmp_path / "data")
     cfg["runtime"]["artifacts_dir"] = str(tmp_path / "artifacts")
     cfg["runtime"]["checkpoint_dir"] = str(tmp_path / "checkpoints")
     cfg["training"]["loop"]["epochs"] = 2
     cfg["training"]["loop"]["summary_every_steps"] = 1
-    config_path = _write_temp_config(tmp_path, cfg, "baseline_cpu.yaml")
+    config_path = _write_temp_config(tmp_path, cfg, "baseline_local.yaml")
 
     train_buffer = io.StringIO()
     assert run_cli(["train", str(config_path)], stdout=train_buffer) == 0
@@ -180,7 +177,7 @@ def test_baseline_cpu_profile_runs_train_then_eval_on_artifact_fixture(tmp_path)
     assert Path(train_summary["artifact_bundle"]).exists()
 
     cfg["runtime"]["checkpoint_path"] = train_summary["best_checkpoint"]
-    eval_config_path = _write_temp_config(tmp_path, cfg, "baseline_cpu_eval.yaml")
+    eval_config_path = _write_temp_config(tmp_path, cfg, "baseline_local_eval.yaml")
     eval_buffer = io.StringIO()
     assert run_cli(["eval", str(eval_config_path)], stdout=eval_buffer) == 0
     eval_summary = _last_json_line(eval_buffer.getvalue())
@@ -191,14 +188,15 @@ def test_baseline_cpu_profile_runs_train_then_eval_on_artifact_fixture(tmp_path)
     assert "metrics.s4.auprc" in eval_summary["metrics"]
 
 
-def test_baseline_wandb_profile_degrades_gracefully_when_wandb_is_unavailable(tmp_path, monkeypatch):
+def test_baseline_local_profile_supports_wandb_override_when_wandb_is_unavailable(tmp_path, monkeypatch):
     _write_artifact_fixture(tmp_path / "data")
-    cfg = _baseline_profile("baseline_wandb.yaml")
+    cfg = _baseline_profile("baseline_local.yaml")
     cfg["runtime"]["data_dir"] = str(tmp_path / "data")
     cfg["runtime"]["artifacts_dir"] = str(tmp_path / "artifacts")
     cfg["runtime"]["checkpoint_dir"] = str(tmp_path / "checkpoints")
     cfg["training"]["loop"]["epochs"] = 1
-    config_path = _write_temp_config(tmp_path, cfg, "baseline_wandb.yaml")
+    cfg["logging"]["backend"] = "wandb"
+    config_path = _write_temp_config(tmp_path, cfg, "baseline_local_wandb.yaml")
 
     original_import = builtins.__import__
 
@@ -238,11 +236,7 @@ def test_readme_references_existing_baseline_files():
     expected = {
         "configs/baseline_reference.yaml",
         "configs/profiles/baseline_local.yaml",
-        "configs/profiles/baseline_cpu.yaml",
-        "configs/profiles/baseline_gpu.yaml",
         "configs/profiles/baseline_kaggle.yaml",
-        "configs/profiles/baseline_wandb.yaml",
-        "scripts/baseline.sh",
         "scripts/baseline_real.sh",
         "scripts/prepare_baseline_artifacts.py",
         "examples/baseline.py",
