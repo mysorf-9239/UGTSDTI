@@ -52,12 +52,12 @@ class State:
         return sorted(self._store.keys())
 
     def snapshot(self) -> dict[str, Any]:
-        """Return a shallow copy of the internal store.
+        """Return an isolated copy of the internal store.
 
-        The returned dict is independent of the internal store, so callers
-        cannot mutate State by modifying the snapshot.
+        The returned dict is detached from State storage, including nested
+        mutable values, so callers cannot mutate State through the snapshot.
         """
-        return dict(self._store)
+        return {key: _isolate_value(value) for key, value in self._store.items()}
 
     def snapshot_isolated(self) -> dict[str, Any]:
         """Return a per-key isolated snapshot for boundary-safe inspection."""

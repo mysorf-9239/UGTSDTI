@@ -156,6 +156,13 @@ class TestSnapshot:
         assert "b" not in snap1
         assert "b" in snap2
 
+    def test_mutating_nested_value_in_snapshot_does_not_affect_state(self):
+        state, writer = make_state_and_writer()
+        writer.commit("p", {"payload": {"values": [1, 2]}})
+        snap = state.snapshot()
+        snap["payload"]["values"].append(3)
+        assert state.get("payload") == {"values": [1, 2]}
+
     def test_empty_state_snapshot_is_empty_dict(self):
         state, _ = make_state_and_writer()
         assert state.snapshot() == {}

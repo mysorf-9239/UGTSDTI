@@ -211,6 +211,25 @@ class TestDeclaredInputEnforcement:
         engine.run(plan, state, writer, _make_context())
         assert received_keys == [["drug_seq"]], "Node should only receive declared inputs, not full State"
 
+    def test_node_cannot_mutate_state_by_mutating_declared_input(self):
+        spec = NodePluginSpec(type_key="mutator", output_attrs=["out"])
+
+        class MutatingRuntime(NodeRuntime):
+            def forward(self, inputs, context):
+                del context
+                inputs["drug_seq"]["tokens"].append("X")
+                return {"out": len(inputs["drug_seq"]["tokens"])}
+
+        registry = _make_registry((spec, MutatingRuntime))
+        plan = _build_and_plan(
+            registry,
+            {"nodes": [{"name": "mutator", "type_key": "mutator", "inputs": ["drug_seq"]}]},
+        )
+        state, writer = _make_state_and_writer(drug_seq={"tokens": ["A", "B"]})
+        engine = GraphEngine(registry)
+        engine.run(plan, state, writer, _make_context())
+        assert state.get("drug_seq") == {"tokens": ["A", "B"]}
+
 
 # ---------------------------------------------------------------------------
 # Tests: debug trace

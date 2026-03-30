@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from ugtsdti.core.errors import BatchSchemaError, MissingRawSnapshotError, ProcessedSplitMismatchError
+from ugtsdti.core.errors import (
+    BatchSchemaError,
+    InconsistentSplitError,
+    MissingRawSnapshotError,
+    ProcessedSplitMismatchError,
+)
 from ugtsdti.core.schema import BatchSpec
 from ugtsdti.data import DataLoaderFactory, DatasetVersion, DataSplitter, DataValidator, SplitManifest
 
@@ -122,6 +127,19 @@ def test_split_manifest_contains_required_protocol_metadata(tmp_path):
     assert set(manifest.scenario_partitions["s1"]) == {"train", "val", "test"}
     assert manifest.protocol_report["protocol_version"] == "cold-start.v2"
     assert "scenario_reports" in manifest.protocol_report
+
+
+def test_splitter_rejects_cold_subset_without_warm_s1_train_rows(tmp_path):
+    splitter = DataSplitter(tmp_path / "splits")
+    with pytest.raises(InconsistentSplitError, match="include 's1'"):
+        splitter.create_splits(
+            "davis",
+            records=_grid_records(),
+            preprocessing_version="prep-v1",
+            split_version="split-v1",
+            seed=7,
+            scenarios=["s2"],
+        )
 
 
 def test_splitter_s2_enforces_cold_drug_separation(tmp_path):

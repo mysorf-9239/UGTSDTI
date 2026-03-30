@@ -13,9 +13,14 @@ from typing import Any
 
 _RUNTIME_OPERATIONAL_HASH_FIELDS = {
     "artifacts_dir",
+    "checkpoint_every_epochs",
     "checkpoint_dir",
     "checkpoint_path",
     "data_dir",
+    "debug",
+    "device",
+    "num_workers",
+    "pin_memory",
 }
 
 

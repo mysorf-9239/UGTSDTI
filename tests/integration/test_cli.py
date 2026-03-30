@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from ugtsdti.cli import resolve_sweep_targets, run_cli
@@ -318,6 +319,7 @@ def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
     assert summary["command"] == "train"
     assert run_id in summary["checkpoint"]
     assert run_id in summary["logs_dir"]
+    assert summary["artifact_bundle"].endswith(run_id)
     artifacts_dir = tmp_path / "artifacts"
     assert any(path.is_dir() for path in artifacts_dir.iterdir())
     checkpoint_dir = tmp_path / "checkpoints"
@@ -331,6 +333,81 @@ def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
     assert checkpoint_bundle.identity["run_id"] == run_id
     assert artifact_identity["config_hash"] == checkpoint_bundle.identity["config_hash"]
     assert artifact_identity["reproducibility_key"] == checkpoint_bundle.identity["reproducibility_key"]
+
+
+def test_cli_train_final_bundle_prefers_eval_metrics_when_eval_cadence_is_enabled(tmp_path):
+    records_dir = tmp_path / "data" / "splits" / "davis" / "v1" / "s1_v1"
+    processed_dir = tmp_path / "data" / "processed" / "davis" / "v1"
+    records_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "dataset_version.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "dataset_version": "raw-v1",
+                "preprocessing_version": "v1",
+                "record_count": 3,
+                "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[
+            {"drug_seq": "AA", "protein_seq": "MK", "labels": 1.0, "scenario": "s1", "partition": "train"},
+            {"drug_seq": "BB", "protein_seq": "ML", "labels": 0.0, "scenario": "s1", "partition": "train"},
+        ],
+        test_rows=[
+            {"drug_seq": "CC", "protein_seq": "MM", "labels": 1.0, "scenario": "s1", "partition": "test"},
+        ],
+    )
+
+    cfg = _valid_cfg()
+    cfg["data"]["preprocessing_version"] = "v1"
+    cfg["data"]["split_version"] = "s1_v1"
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.baseline",
+            "inputs": ["drug_seq", "protein_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    cfg["training"]["loop"] = {
+        "epochs": 1,
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 1,
+        "eval_partition": "test",
+    }
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "batch_size": 1,
+        "seed": 7,
+    }
+    config_path = tmp_path / "train_eval_bundle.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    assert run_cli(["train", str(config_path)], stdout=buffer) == 0
+    lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
+    run_id = lines[0].split()[0].split("=", 1)[1]
+    summary = json.loads(lines[-1])
+    metrics_payload = json.loads((tmp_path / "artifacts" / run_id / "metrics.json").read_text(encoding="utf-8"))
+
+    assert summary["final_eval_metrics"]
+    for key, value in summary["final_eval_metrics"].items():
+        assert metrics_payload[key] == pytest.approx(value)
 
 
 def test_cli_train_runs_epoch_loop_with_summary_and_eval_cadence(tmp_path):

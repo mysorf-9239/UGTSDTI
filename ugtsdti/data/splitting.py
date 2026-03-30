@@ -43,10 +43,7 @@ class DataSplitter:
             if not placed:
                 dropped_records += 1
 
-        warm_train_rows = list(buckets.get("s1", {}).get("train", []))
-        for scenario in ("s2", "s3", "s4"):
-            if scenario in buckets:
-                buckets[scenario]["train"] = list(warm_train_rows)
+        _materialize_cold_start_train_rows(buckets, scenario_list)
 
         scenario_partitions: dict[str, dict[str, str]] = {}
         counts: dict[str, dict[str, int]] = {}
@@ -73,6 +70,15 @@ class DataSplitter:
                 counts[scenario][partition] = len(rows)
             scenario_reports[scenario] = _build_scenario_report(scenario_rows)
 
+        for scenario in scenario_list:
+            if scenario in {"s2", "s3", "s4"} and counts[scenario]["train"] == 0:
+                raise InconsistentSplitError(
+                    f"Requested split produced zero train rows for cold-start scenario {scenario!r}. "
+                    "Generate a warm S1 split alongside cold scenarios or include 's1' in the requested scenarios.",
+                    stage="data",
+                    component="DataSplitter",
+                    key=f"{scenario}.train",
+                )
         if all(counts[scenario]["test"] == 0 for scenario in scenario_list):
             raise InconsistentSplitError(
                 "Requested split produced zero evaluation records across all scenarios.",
@@ -110,6 +116,20 @@ def _validate_requested_scenarios(scenarios: list[str]) -> None:
 
 def _empty_bucket_map(scenarios: list[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
     return {scenario: {partition: [] for partition in _PARTITIONS} for scenario in scenarios}
+
+
+def _materialize_cold_start_train_rows(
+    buckets: dict[str, dict[str, list[dict[str, Any]]]],
+    scenarios: list[str],
+) -> None:
+    cold_scenarios = [scenario for scenario in ("s2", "s3", "s4") if scenario in buckets]
+    if not cold_scenarios:
+        return
+    if "s1" not in buckets:
+        return
+    warm_train_rows = list(buckets["s1"]["train"])
+    for scenario in cold_scenarios:
+        buckets[scenario]["train"] = list(warm_train_rows)
 
 
 def _assign_protocol_row(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -281,6 +282,8 @@ def test_evaluator_writes_artifact_bundle_when_configured(tmp_path):
     assert (bundle_dir / "metrics.json").exists()
     assert (bundle_dir / "diagnostics.json").exists()
     assert (bundle_dir / "execution_trace.json").exists()
+    trace_payload = json.loads((bundle_dir / "execution_trace.json").read_text(encoding="utf-8"))
+    assert trace_payload["num_batches"] == 1
 
 
 def test_sample_ablation_and_sweep_configs_smoke_validate():

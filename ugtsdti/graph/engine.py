@@ -214,7 +214,7 @@ class GraphEngine:
                     component=node_name,
                     key=key,
                 )
-            inputs[key] = state.get(key)
+            inputs[key] = state.get_isolated(key)
         return inputs
 
     def _validate_outputs(

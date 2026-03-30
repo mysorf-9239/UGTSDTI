@@ -207,6 +207,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
     last_checkpoint = None
     last_eval_metrics: dict[str, Any] = {}
     last_train_result = None
+    final_bundle_dir: str | None = None
 
     try:
         for epoch_idx in range(int(loop_cfg["epochs"])):
@@ -273,9 +274,31 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                     )
                     + "\n"
                 )
+        if last_train_result is not None:
+            safe_snapshot = last_train_result.state.snapshot_isolated()
+            final_metrics = (
+                last_eval_metrics
+                if last_eval_metrics
+                else {key: value for key, value in safe_snapshot.items() if key.startswith("metrics.")}
+            )
+            final_bundle_dir = str(
+                artifact_writer.write_bundle(
+                    identity=runtime_identity,
+                    config=runtime_cfg,
+                    metrics=final_metrics,
+                    diagnostics={key: value for key, value in safe_snapshot.items() if key.startswith("diagnostics.")},
+                    split_manifest=split_manifest,
+                    model_state=executor.model_state(runtime_cfg),
+                    execution_trace=last_train_result.trace.__dict__,
+                    state_boundary_summaries=last_train_result.trace.state_boundary_summaries,
+                    logs_dir=str(logs_dir),
+                    bundle_kind="final",
+                )
+            )
         stream.write(
             json.dumps(
                 {
+                    "artifact_bundle": final_bundle_dir,
                     "batches_per_epoch": len(batches),
                     "checkpoint": last_checkpoint,
                     "command": args.command,
@@ -289,20 +312,6 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
             )
             + "\n"
         )
-        if last_train_result is not None:
-            safe_snapshot = last_train_result.state.snapshot_isolated()
-            artifact_writer.write_bundle(
-                identity=runtime_identity,
-                config=runtime_cfg,
-                metrics={key: value for key, value in safe_snapshot.items() if key.startswith("metrics.")},
-                diagnostics={key: value for key, value in safe_snapshot.items() if key.startswith("diagnostics.")},
-                split_manifest=split_manifest,
-                model_state=executor.model_state(runtime_cfg),
-                execution_trace=last_train_result.trace.__dict__,
-                state_boundary_summaries=last_train_result.trace.state_boundary_summaries,
-                logs_dir=str(logs_dir),
-                bundle_kind="final",
-            )
     finally:
         logger.close()
 

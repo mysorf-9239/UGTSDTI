@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
@@ -22,6 +22,7 @@ class EvaluationResult:
     metrics: dict[str, Any]
     traces: list[PipelineTrace] = field(default_factory=list)
     highlighted_scenarios: list[str] = field(default_factory=list)
+    aggregate_trace: dict[str, Any] = field(default_factory=dict)
 
 
 class Evaluator:
@@ -75,6 +76,14 @@ class Evaluator:
 
         aggregate_state = _build_aggregate_state(collected)
         metrics = self._reporter.report(cfg.get("metrics", {}), aggregate_state, _concat_values(labels))
+        aggregate_state_boundaries: dict[str, Any] = {
+            f"batch_{index:04d}": trace.state_boundary_summaries for index, trace in enumerate(traces)
+        }
+        aggregate_trace: dict[str, Any] = {
+            "num_batches": len(traces),
+            "stage_orders": [list(trace.stage_order) for trace in traces],
+            "state_boundary_summaries": aggregate_state_boundaries,
+        }
         if self._logger is not None:
             self._logger.log_metrics(_collect_scalar_metrics_from_dict(metrics), step=0)
         if self._artifact_writer is not None and identity is not None and normalized_config is not None and traces:
@@ -85,8 +94,8 @@ class Evaluator:
                 diagnostics={key: value for key, value in metrics.items() if key.startswith("diagnostics.")},
                 split_manifest=split_manifest or {},
                 model_state=model_state or {},
-                execution_trace=asdict(traces[0]),
-                state_boundary_summaries=traces[0].state_boundary_summaries,
+                execution_trace=aggregate_trace,
+                state_boundary_summaries=aggregate_state_boundaries,
                 logs_dir=logs_dir,
                 bundle_kind="final",
             )
@@ -97,6 +106,7 @@ class Evaluator:
             metrics=metrics,
             traces=traces,
             highlighted_scenarios=highlighted,
+            aggregate_trace=aggregate_trace,
         )
 
 
