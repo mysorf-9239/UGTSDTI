@@ -54,6 +54,10 @@ def _valid_cfg() -> dict:
     }
 
 
+def _baseline_reference_cfg() -> dict:
+    return ConfigLoader().load(Path(__file__).resolve().parents[2] / "configs" / "baseline_reference.yaml")
+
+
 def _write_partition_manifest(
     base_dir: Path,
     *,
@@ -333,6 +337,69 @@ def test_cli_train_runs_with_default_handlers_when_artifacts_exist(tmp_path):
     assert checkpoint_bundle.identity["run_id"] == run_id
     assert artifact_identity["config_hash"] == checkpoint_bundle.identity["config_hash"]
     assert artifact_identity["reproducibility_key"] == checkpoint_bundle.identity["reproducibility_key"]
+
+
+def test_cli_train_runs_with_baseline_reference_config(tmp_path):
+    records_dir = tmp_path / "data" / "splits" / "davis" / "v1" / "v1"
+    processed_dir = tmp_path / "data" / "processed" / "davis" / "v1"
+    records_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "dataset_version.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "dataset_version": "raw-v1",
+                "preprocessing_version": "v1",
+                "record_count": 8,
+                "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[
+            {"drug_seq": [1, 1, 1, 1], "protein_seq": [1, 1, 1, 1, 1], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [7, 7, 7, 7], "protein_seq": [7, 7, 7, 7, 7], "labels": 0.0, "scenario": "s1"},
+            {"drug_seq": [2, 2, 2, 2], "protein_seq": [2, 2, 2, 2, 2], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [8, 8, 8, 8], "protein_seq": [8, 8, 8, 8, 8], "labels": 0.0, "scenario": "s1"},
+        ],
+        test_rows=[
+            {"drug_seq": [3, 3, 3, 3], "protein_seq": [3, 3, 3, 3, 3], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [9, 9, 9, 9], "protein_seq": [9, 9, 9, 9, 9], "labels": 0.0, "scenario": "s1"},
+        ],
+    )
+
+    cfg = _baseline_reference_cfg()
+    cfg["scenario"]["eval"] = ["s1"]
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "batch_size": 2,
+        "seed": 7,
+    }
+    cfg["training"]["loop"] = {
+        "epochs": 2,
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 1,
+        "eval_partition": "test",
+    }
+    config_path = tmp_path / "baseline_train.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    assert run_cli(["train", str(config_path)], stdout=buffer) == 0
+    lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
+    summary = json.loads(lines[-1])
+
+    assert lines[0].startswith("run_id=")
+    assert summary["command"] == "train"
+    assert summary["artifact_bundle"]
+    assert summary["checkpoint"].endswith(".pt")
+    assert summary["final_eval_metrics"]["metrics.auroc"] >= 0.0
 
 
 def test_cli_train_final_bundle_prefers_eval_metrics_when_eval_cadence_is_enabled(tmp_path):

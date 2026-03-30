@@ -1,0 +1,116 @@
+version: v1
+
+data:
+  dataset: davis
+  preprocessing_version: v1
+  split_version: v1
+
+scenario:
+  train: s1
+  eval:
+    - s1
+    - s2
+    - s3
+    - s4
+
+modalities:
+  available:
+    - sequence
+  student:
+    uses:
+      - sequence
+
+graph:
+  nodes:
+    - name: drug_encoder
+      type: encoder.simple_drug
+      inputs:
+        - drug_seq
+      output_attrs:
+        - embedding
+      params:
+        vocab_size: 32
+        embedding_dim: 12
+        hidden_dim: 16
+
+    - name: protein_encoder
+      type: encoder.cnn_protein
+      inputs:
+        - protein_seq
+      output_attrs:
+        - embedding
+      params:
+        vocab_size: 32
+        embedding_dim: 12
+        hidden_dim: 16
+        kernel_size: 3
+        pooling: mean
+
+    - name: fusion
+      type: fusion.concat
+      inputs:
+        - drug_encoder.embedding
+        - protein_encoder.embedding
+      output_attrs:
+        - embedding
+      params:
+        input_dim: 32
+        project_dim: 16
+
+    - name: head
+      type: head.mlp
+      inputs:
+        - fusion.embedding
+      output_attrs:
+        - logits
+      params:
+        input_dim: 16
+        hidden_dim: 16
+        output_dim: 1
+
+roles:
+  student:
+    outputs:
+      - head.logits
+    aggregation: first
+
+interaction:
+  order:
+    - noop
+  dependencies: {}
+  noop:
+    type: noop
+    inputs:
+      - student.logits
+    params:
+      enabled: true
+
+decision:
+  type: identity
+  mode: heuristic
+  strategy: identity
+  source_key: student.logits
+
+training:
+  student:
+    freeze: false
+  optimizer:
+    lr: 0.05
+  loop:
+    epochs: 3
+    checkpoint_every_epochs: 1
+    summary_every_steps: 1
+    eval_every_epochs: 1
+    eval_partition: test
+
+loss:
+  type: hard
+  hard_weight: 1.0
+  map: {}
+
+metrics:
+  primary: auroc
+  enabled:
+    - auroc
+    - auprc
+  by_scenario: true

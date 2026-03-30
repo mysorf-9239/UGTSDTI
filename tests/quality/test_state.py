@@ -225,3 +225,16 @@ class TestMutationIsolation:
         snap["gate.alpha"].mul_(0.0)
 
         assert torch.equal(state.get("gate.alpha"), torch.tensor([[0.6], [0.4]]))
+
+    def test_committed_tensor_preserves_autograd_graph(self):
+        torch = pytest.importorskip("torch")
+        state, writer = make_state_and_writer()
+        source = torch.tensor([[2.0]], requires_grad=True)
+        loss = source * 3.0
+        writer.commit("p", {"loss.total": loss})
+
+        restored_loss = state.get("loss.total")
+        restored_loss.backward()
+
+        assert source.grad is not None
+        assert torch.equal(source.grad, torch.tensor([[3.0]]))

@@ -175,6 +175,8 @@ def _graph_nodes_as_list(graph_cfg: dict[str, object]) -> dict[str, object]:
 
 
 def _to_float(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
     try:
         import torch
 
@@ -182,4 +184,4 @@ def _to_float(value: object) -> float:
             return float(value.detach().to(dtype=torch.float32).mean().cpu().item())
     except ImportError:
         pass
-    return float(value)
+    raise TypeError(f"Unsupported scalar value for float conversion: {type(value)!r}")

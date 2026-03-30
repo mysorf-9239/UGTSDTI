@@ -345,6 +345,8 @@ Một checkpoint/model-state test phải:
 
 Nếu có thể reuse data fixtures trong repo, nên thêm một integration smoke cho CLI train/eval baseline config. Nhưng đây không phải blocker của spec baseline nếu tests framework-level đã chứng minh path train/eval tương đương.
 
+Smoke này nên dùng fixture artifacts nhỏ và phù hợp để chạy trong local/CI subset, không nên phụ thuộc dataset research đầy đủ.
+
 ---
 
 ## 8. Metrics and Learning Signal

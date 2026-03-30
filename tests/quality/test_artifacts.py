@@ -147,7 +147,7 @@ def test_reproducibility_key_stays_stable_while_run_identity_changes():
     assert key1 == key2
 
 
-def test_graph_engine_materializes_declared_inputs_without_state_deep_copy():
+def test_graph_engine_materializes_declared_inputs_with_isolated_state_values():
     SourceRuntime.seen_outputs = []
     SinkRuntime.seen_input_ids = []
 
@@ -182,7 +182,9 @@ def test_graph_engine_materializes_declared_inputs_without_state_deep_copy():
     )
 
     assert SourceRuntime.seen_outputs
-    assert SinkRuntime.seen_input_ids == [id(state.get("source.payload"))]
+    assert SinkRuntime.seen_input_ids
+    assert SinkRuntime.seen_input_ids[0] != id(state.get("source.payload"))
+    assert state.get("source.payload") == {"values": [7]}
 
 
 def test_graph_engine_runs_do_not_share_mutable_state_between_executions():

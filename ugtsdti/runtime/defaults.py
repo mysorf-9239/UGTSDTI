@@ -17,6 +17,12 @@ from ugtsdti.interaction.uncertainty import (
     uncertainty_output_keys,
 )
 from ugtsdti.nodes.base import NodeRuntime
+from ugtsdti.nodes.baseline import (
+    CNNProteinEncoderRuntime,
+    ConcatFusionRuntime,
+    MLPHeadRuntime,
+    SimpleDrugEncoderRuntime,
+)
 
 
 class SimpleConcatEncoderRuntime(NodeRuntime):
@@ -86,6 +92,18 @@ def build_default_graph_registry() -> NodeRegistry:
         SimpleConcatEncoderRuntime,
     )
     registry.register(
+        NodePluginSpec(type_key="encoder.simple_drug", output_attrs=["embedding"], input_kinds=["drug_seq"]),
+        SimpleDrugEncoderRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="encoder.cnn_protein", output_attrs=["embedding"], input_kinds=["protein_seq"]),
+        CNNProteinEncoderRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="fusion.concat", output_attrs=["embedding"], input_kinds=["embedding"]),
+        ConcatFusionRuntime,
+    )
+    registry.register(
         NodePluginSpec(type_key="head.student", output_attrs=["logits"], input_kinds=["embedding"]),
         SimpleLinearHeadRuntime,
     )
@@ -96,6 +114,10 @@ def build_default_graph_registry() -> NodeRegistry:
     registry.register(
         NodePluginSpec(type_key="head.linear", output_attrs=["logits"], input_kinds=["embedding"]),
         SimpleLinearHeadRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="head.mlp", output_attrs=["logits"], input_kinds=["embedding"]),
+        MLPHeadRuntime,
     )
     return registry
 

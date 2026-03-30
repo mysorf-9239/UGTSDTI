@@ -27,3 +27,25 @@ Matrix này map `REQ-INTG-*` của pha integrity hardening sang design, config s
 - `Decision` fallback semantics được sync theo runtime hiện có: một branch còn sống vẫn hợp lệ, không cần khai báo fallback tường minh chỉ để qua validator.
 - `roles.<name>.allow_multi_output_first` là explicit escape hatch cho các case debug/ablation; mặc định hardening sẽ reject multi-output `first`.
 - Canonical artifact bundle hiện nằm ở `artifacts/<run_id>/`, còn trainer snapshots nằm ở `artifacts/<run_id>/snapshots/<label>/`.
+
+## Baseline Reference Matrix
+
+Matrix này map `REQ-BL-*` của baseline reference model sang config surface, implementation, và tests đang cover.
+
+| Requirement | Design / Docs | Config Surface | Implementation | Validation |
+| --- | --- | --- | --- | --- |
+| `REQ-BL-001` Baseline respects fixed pipeline | `.kiro/specs/ugtsdti-baseline-model/design.md` Sections 2-3 | `interaction.noop`, `decision.identity`, `loss.hard` | `ugtsdti/trainer/trainer.py`, `ugtsdti/interaction/noop.py` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-002` Student-only baseline canonical path | `.kiro/specs/ugtsdti-baseline-model/requirements.md` Section 5 | `roles.student.outputs`, `decision.source_key` | `configs/baseline_reference.yaml`, `ugtsdti/roles/binder.py` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-003` Baseline graph topology | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 3 | `graph.nodes` order and dependencies | `ugtsdti/graph/builder.py`, `ugtsdti/graph/planner.py` | `tests/integration/test_baseline_reference.py`, `tests/quality/test_graph.py` |
+| `REQ-BL-004` `encoder.simple_drug` | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 4.1 | `graph.nodes[*].type: encoder.simple_drug` | `ugtsdti/nodes/baseline.py`, `ugtsdti/runtime/defaults.py` | `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-005` `encoder.cnn_protein` | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 4.2 | `graph.nodes[*].type: encoder.cnn_protein` | `ugtsdti/nodes/baseline.py`, `ugtsdti/runtime/defaults.py` | `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-006` `fusion.concat` | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 4.3 | `graph.nodes[*].type: fusion.concat` | `ugtsdti/nodes/baseline.py`, `ugtsdti/runtime/defaults.py` | `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-007` `head.mlp` raw-logits head | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 4.4 | `graph.nodes[*].type: head.mlp` | `ugtsdti/nodes/baseline.py`, `ugtsdti/runtime/defaults.py` | `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-008` Deterministic fail-closed registry integration | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 5 | graph node type keys | `ugtsdti/graph/registry.py`, `ugtsdti/runtime/defaults.py` | `tests/quality/test_graph.py`, `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-009` Canonical baseline config | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 6 | `configs/baseline_reference.yaml` | `configs/baseline_reference.yaml` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-010` Forward materializes canonical keys | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 7 | graph / roles / decision / metrics keys | `ugtsdti/trainer/trainer.py` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-011` Training is learnable | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 8 | `training.optimizer`, `training.loop` | `ugtsdti/core/state.py`, `ugtsdti/trainer/trainer.py`, `ugtsdti/nodes/baseline.py` | `tests/integration/test_baseline_reference.py`, `tests/quality/test_state.py` |
+| `REQ-BL-012` Scenario-aware evaluation support | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 8 | `metrics.by_scenario`, `scenario.eval` | `ugtsdti/postprocess/metrics.py`, `ugtsdti/trainer/evaluator.py` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-013` Runtime state round-trip | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 5 | model state / checkpoint lineage | `ugtsdti/trainer/trainer.py`, `ugtsdti/nodes/baseline.py` | `tests/integration/test_baseline_reference.py`, `tests/quality/test_baseline_nodes.py` |
+| `REQ-BL-014` Minimal surface, no extra research logic | `.kiro/specs/ugtsdti-baseline-model/requirements.md` Section 5 | no teacher/KD/uncertainty in canonical config | `configs/baseline_reference.yaml` | config inspection + `tests/integration/test_baseline_reference.py` |
+| `REQ-BL-015` Traceability update | `.kiro/specs/ugtsdti-baseline-model/{requirements,design,tasks}.md` | N/A | `.docs/traceability.md` | repo audit + task completion |

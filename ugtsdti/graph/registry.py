@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ugtsdti.core.errors import MissingDependencyError
+from ugtsdti.core.errors import InvalidConfigError, MissingDependencyError
 from ugtsdti.graph.specs import NodeDefinition, NodePluginSpec
 
 if TYPE_CHECKING:
@@ -40,6 +40,13 @@ class NodeRegistry:
             spec:        Static capability metadata for the plugin type.
             runtime_cls: Class (not instance) that implements NodeRuntime.forward.
         """
+        if spec.type_key in self._specs:
+            raise InvalidConfigError(
+                f"Node plugin type {spec.type_key!r} is already registered.",
+                stage="graph",
+                component="NodeRegistry",
+                key=spec.type_key,
+            )
         self._specs[spec.type_key] = spec
         self._runtime_classes[spec.type_key] = runtime_cls
 

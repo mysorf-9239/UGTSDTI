@@ -116,7 +116,7 @@ def _isolate_value(value: Any) -> Any:
         import torch
 
         if isinstance(value, torch.Tensor):
-            return value.detach().clone()
+            return value.clone()
     except ImportError:
         pass
 

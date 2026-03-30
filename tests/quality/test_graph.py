@@ -106,6 +106,12 @@ class TestGraphBuilderBasic:
 
 
 class TestGraphBuilderValidation:
+    def test_duplicate_type_key_registration_rejected(self):
+        registry = NodeRegistry()
+        registry.register(ENCODER_SPEC, _StubRuntime)
+        with pytest.raises(InvalidConfigError, match="already registered"):
+            registry.register(ENCODER_SPEC, _StubRuntime)
+
     def test_duplicate_node_names_rejected(self):
         registry = _make_registry(ENCODER_SPEC)
         builder = GraphBuilder(registry)

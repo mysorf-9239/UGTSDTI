@@ -230,17 +230,23 @@ class PipelineExecutor:
         plan = cfg["graph_plan"]
         definitions = plan.definition_map()
         producers = plan.producers
+        dependencies = plan.edges
         groups: dict[str, list[Any]] = {"teacher": [], "student": [], "gate": []}
         for role_name in ("teacher", "student"):
+            visited_nodes: set[str] = set()
             role_cfg = cfg.get("roles", {}).get(role_name, {})
             for output_key in role_cfg.get("outputs", []):
                 node_name = producers.get(output_key)
                 if node_name is None:
                     continue
-                runtime = self._graph_engine.ensure_runtime(definitions[node_name])
-                parameters = getattr(runtime, "parameters", None)
-                if callable(parameters):
-                    groups[role_name].extend(list(parameters()))
+                for ancestor in _collect_upstream_nodes(node_name, dependencies):
+                    if ancestor in visited_nodes:
+                        continue
+                    visited_nodes.add(ancestor)
+                    runtime = self._graph_engine.ensure_runtime(definitions[ancestor])
+                    parameters = getattr(runtime, "parameters", None)
+                    if callable(parameters):
+                        groups[role_name].extend(list(parameters()))
         return groups
 
     def model_state(self, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -536,6 +542,22 @@ def _identity_dict(identity: ExperimentIdentity | dict[str, Any]) -> dict[str, A
     if isinstance(identity, ExperimentIdentity):
         return identity.to_dict()
     return dict(identity)
+
+
+def _collect_upstream_nodes(node_name: str, edges: dict[str, list[str]]) -> list[str]:
+    ordered: list[str] = []
+    visited: set[str] = set()
+
+    def visit(current: str) -> None:
+        if current in visited:
+            return
+        visited.add(current)
+        for dependency in edges.get(current, []):
+            visit(dependency)
+        ordered.append(current)
+
+    visit(node_name)
+    return ordered
 
 
 def _component_state_dict(component: Any | None) -> dict[str, Any]:
