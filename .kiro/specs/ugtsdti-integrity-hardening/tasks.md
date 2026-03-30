@@ -54,7 +54,7 @@ Có 4 checkpoint:
     - decision/postprocess boundary values
     - _Requirements: REQ-INTG-002_
 
-- [ ] 3. Checkpoint 1 — No more silent semantic drift
+- [x] 3. Checkpoint 1 — No more silent semantic drift
   - Verify normalization không đổi runtime meaning
   - Verify state boundary reads không còn leak mutation dễ dàng
   - _Requirements: REQ-INTG-001, REQ-INTG-002_
