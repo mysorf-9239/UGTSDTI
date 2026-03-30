@@ -84,3 +84,5 @@ configs/sweep_outputs/
 artifacts/
 
 */.DS_store/
+
+uv.lock
