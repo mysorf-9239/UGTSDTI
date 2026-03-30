@@ -47,7 +47,7 @@ class _UnexpectedOutputRuntime(InteractionRuntime):
 
 
 NOOP_SPEC = InteractionPluginSpec(type_key="noop", output_keys_fn=lambda params: [])
-DIAG_SPEC = InteractionPluginSpec(type_key="diag", output_keys_fn=lambda params: ["interaction.disagreement"])
+DIAG_SPEC = InteractionPluginSpec(type_key="diag", output_keys_fn=lambda params: ["diagnostics.disagreement"])
 VAR_SPEC = InteractionPluginSpec(type_key="var", output_keys_fn=lambda params: ["teacher.var"])
 
 
@@ -377,7 +377,7 @@ class TestDiagnosticsInteraction:
         )
 
         assert set(outputs) == set(diagnostics_output_keys({"emit_calibration": True}))
-        assert outputs["interaction.disagreement"].item() >= 0.0
+        assert outputs["diagnostics.disagreement"].item() >= 0.0
         assert 0.0 <= outputs["diagnostics.teacher_confidence"].item() <= 1.0
         assert 0.0 <= outputs["diagnostics.student_confidence"].item() <= 1.0
 

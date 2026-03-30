@@ -300,4 +300,4 @@ class TestStateSchemaBuilder:
         assert "interaction.kd.loss_component" in keys
         assert "kd.teacher_target" in keys
         assert "teacher.var" in keys
-        assert "interaction.disagreement" in keys
+        assert "diagnostics.disagreement" in keys

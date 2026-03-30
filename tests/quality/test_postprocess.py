@@ -157,7 +157,7 @@ def test_metrics_reporter_emits_diagnostics_with_stable_namespace():
     state = _make_state(
         logits=torch.tensor([[0.1], [0.9]]),
         **{
-            "interaction.disagreement": torch.tensor(0.2),
+            "diagnostics.disagreement": torch.tensor(0.2),
             "gate.alpha": torch.tensor([[0.7], [0.3]]),
             "teacher.var": torch.tensor([[0.2], [0.4]]),
             "student.var": torch.tensor([[0.1], [0.5]]),

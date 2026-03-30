@@ -67,7 +67,7 @@ class Evaluator:
             collected["scenario"].extend(list(batch.get("scenario", [])))
             for optional_key in (
                 "gate.alpha",
-                "interaction.disagreement",
+                "diagnostics.disagreement",
                 "teacher.var",
                 "student.var",
             ):
@@ -123,7 +123,7 @@ def _build_aggregate_state(collected: dict[str, list[Any]]) -> State:
         "logits": _concat_values(collected.get("logits", [])),
         "scenario": list(collected.get("scenario", [])),
     }
-    for key in ("gate.alpha", "interaction.disagreement", "teacher.var", "student.var"):
+    for key in ("gate.alpha", "diagnostics.disagreement", "teacher.var", "student.var"):
         values = collected.get(key, [])
         if values:
             outputs[key] = _concat_values(values)

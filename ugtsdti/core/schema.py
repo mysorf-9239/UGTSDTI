@@ -377,7 +377,7 @@ def _collect_interaction_output_keys(interaction_cfg: dict[str, Any]) -> set[str
             if emit_student:
                 outputs.add("student.var")
         if "diagnostics" in module_type or module_name == "diagnostics":
-            outputs.add("interaction.disagreement")
+            outputs.add("diagnostics.disagreement")
             if not isinstance(params, dict) or params.get("emit_calibration", True):
                 outputs.update({"diagnostics.teacher_confidence", "diagnostics.student_confidence"})
 

@@ -12,7 +12,7 @@ def diagnostics_output_keys(params: dict[str, Any]) -> list[str]:
     """Return diagnostics keys emitted by the module."""
     if params.get("enabled", True) is False:
         return []
-    keys = ["interaction.disagreement"]
+    keys = ["diagnostics.disagreement"]
     if params.get("emit_calibration", True):
         keys.extend(
             [
@@ -46,7 +46,7 @@ class DiagnosticsInteraction(InteractionRuntime):
         disagreement = (teacher_prob - student_prob).abs().mean()
 
         outputs: dict[str, Any] = {
-            "interaction.disagreement": disagreement,
+            "diagnostics.disagreement": disagreement,
         }
         if self._emit_calibration:
             outputs["diagnostics.teacher_confidence"] = teacher_prob.mean()

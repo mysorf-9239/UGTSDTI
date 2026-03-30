@@ -98,7 +98,10 @@ class PipelineExecutor:
         metrics_cfg = cfg.get("metrics", {})
         if metrics_cfg:
             outputs.update(MetricsReporter().report(metrics_cfg, state, batch["labels"]))
-        writer.commit("postprocess", outputs)
+        postprocess_outputs = {
+            key: value for key, value in outputs.items() if not (key.startswith("diagnostics.") and state.has(key))
+        }
+        writer.commit("postprocess", postprocess_outputs)
         trace.stage_order.append("postprocess")
         trace.state_boundary_summaries["postprocess"] = state.keys()
         return state, trace

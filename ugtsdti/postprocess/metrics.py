@@ -66,7 +66,9 @@ def _scenario_metrics(
 
 def _diagnostics_from_state(state: State) -> dict[str, Any]:
     outputs: dict[str, Any] = {}
-    if state.has("interaction.disagreement"):
+    if state.has("diagnostics.disagreement"):
+        outputs["diagnostics.disagreement"] = state.get("diagnostics.disagreement")
+    elif state.has("interaction.disagreement"):
         outputs["diagnostics.disagreement"] = state.get("interaction.disagreement")
     if state.has("gate.alpha"):
         outputs["diagnostics.gate_alpha"] = _as_tensor(state.get("gate.alpha")).mean()
