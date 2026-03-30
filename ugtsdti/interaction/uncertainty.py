@@ -1,4 +1,5 @@
 """Uncertainty estimation interaction modules."""
+
 from __future__ import annotations
 
 from typing import Any

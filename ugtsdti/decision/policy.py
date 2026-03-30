@@ -1,4 +1,5 @@
 """Decision policies that turn trust signals into final logits."""
+
 from __future__ import annotations
 
 from typing import Any

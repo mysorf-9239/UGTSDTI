@@ -1,4 +1,5 @@
 """Property-based tests for interaction modules and planning."""
+
 from __future__ import annotations
 
 import pytest

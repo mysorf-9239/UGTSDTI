@@ -1,4 +1,5 @@
 """Default runtime wiring for shipped config type keys."""
+
 from __future__ import annotations
 
 from typing import Any

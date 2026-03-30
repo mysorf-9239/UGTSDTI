@@ -1,4 +1,5 @@
 """Tests for CLI validation and sweep handling."""
+
 from __future__ import annotations
 
 import io

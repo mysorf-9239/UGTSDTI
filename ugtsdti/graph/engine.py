@@ -2,6 +2,7 @@
 
 REQ-GRAPH-002, REQ-GRAPH-003, REQ-STATE-003, REQ-QUAL-002, REQ-QUAL-004
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -208,7 +209,7 @@ class GraphEngine:
         for key in declared_inputs:
             if not state.has(key):
                 raise MissingDependencyError(
-                    f"Node {node_name!r} requires input {key!r} " f"which is not present in State.",
+                    f"Node {node_name!r} requires input {key!r} which is not present in State.",
                     stage="graph",
                     component=node_name,
                     key=key,

@@ -1,4 +1,5 @@
 """Helpers for config-driven runtime plugin registration."""
+
 from __future__ import annotations
 
 from importlib import import_module

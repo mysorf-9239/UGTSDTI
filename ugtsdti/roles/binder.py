@@ -2,6 +2,7 @@
 
 REQ-ROLE-001, REQ-STATE-004, REQ-ARCH-004
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

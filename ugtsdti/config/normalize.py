@@ -9,6 +9,7 @@ Properties:
 
 REQ-CONF-003
 """
+
 from __future__ import annotations
 
 import copy

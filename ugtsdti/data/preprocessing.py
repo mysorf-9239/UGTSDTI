@@ -1,4 +1,5 @@
 """Raw-to-processed dataset materialization."""
+
 from __future__ import annotations
 
 import csv

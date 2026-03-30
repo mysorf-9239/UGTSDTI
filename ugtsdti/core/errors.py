@@ -5,6 +5,7 @@ so that validation failures can be traced to the exact boundary.
 
 REQ-QUAL-001
 """
+
 from __future__ import annotations
 
 from typing import Any

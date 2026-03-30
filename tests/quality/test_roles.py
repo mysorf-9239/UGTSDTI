@@ -2,6 +2,7 @@
 
 REQ-ROLE-001, REQ-ARCH-004
 """
+
 from __future__ import annotations
 
 import pytest

@@ -1,4 +1,5 @@
 """Operational runtime adaptation without semantic changes."""
+
 from __future__ import annotations
 
 from pathlib import Path

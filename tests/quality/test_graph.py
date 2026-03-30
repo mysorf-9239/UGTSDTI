@@ -2,6 +2,7 @@
 
 REQ-GRAPH-002, REQ-GRAPH-003, REQ-ARCH-004
 """
+
 from __future__ import annotations
 
 import pytest

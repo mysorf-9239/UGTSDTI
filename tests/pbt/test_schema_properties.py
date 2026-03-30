@@ -1,4 +1,5 @@
 """Property-based tests for schema builder determinism."""
+
 from __future__ import annotations
 
 from hypothesis import given

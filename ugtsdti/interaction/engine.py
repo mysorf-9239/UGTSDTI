@@ -1,4 +1,5 @@
 """Runtime execution for the interaction stage with contract enforcement."""
+
 from __future__ import annotations
 
 from ugtsdti.core.context import ExecutionContext
@@ -68,8 +69,7 @@ class InteractionEngine:
         for key in declared_inputs:
             if not state.has(key):
                 raise MissingDependencyError(
-                    f"Interaction runtime {interaction_name!r} requires input {key!r} "
-                    "which is not present in State.",
+                    f"Interaction runtime {interaction_name!r} requires input {key!r} which is not present in State.",
                     stage="interaction",
                     component=interaction_name,
                     key=key,

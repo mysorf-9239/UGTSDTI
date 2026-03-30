@@ -1,4 +1,5 @@
 """Unit tests for advanced decision modules."""
+
 from __future__ import annotations
 
 import pytest

@@ -17,6 +17,7 @@ Cross-section checks:
 
 REQ-CONF-002, REQ-ARCH-002, REQ-ARCH-004
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -390,7 +391,7 @@ class ConfigValidator:
             for dep in mod_deps:
                 if dep not in order_set:
                     raise InvalidConfigError(
-                        f"Interaction module '{mod_name}' depends on '{dep}' " f"which is not in interaction.order.",
+                        f"Interaction module '{mod_name}' depends on '{dep}' which is not in interaction.order.",
                         stage="config_validate",
                         component="interaction",
                         key=f"interaction.dependencies.{mod_name}",
@@ -530,8 +531,7 @@ class ConfigValidator:
 
             if source_key and source_key not in produced_keys:
                 raise InvalidConfigError(
-                    f"Loss map entry '{loss_key}' references key {source_key!r} "
-                    f"which is not produced by any stage.",
+                    f"Loss map entry '{loss_key}' references key {source_key!r} which is not produced by any stage.",
                     stage="config_validate",
                     component="loss",
                     key=f"loss.map.{loss_key}",

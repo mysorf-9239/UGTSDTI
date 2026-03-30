@@ -1,4 +1,5 @@
 """Validation for materialized data artifacts and batches."""
+
 from __future__ import annotations
 
 import json

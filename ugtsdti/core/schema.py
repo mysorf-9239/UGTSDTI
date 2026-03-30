@@ -8,6 +8,7 @@ Canonical key namespace rules (REQ-ARCH-004, REQ-STATE-004, REQ-DATA-003):
 - Metrics keys:     "metrics.*"
 - Diagnostics keys: "diagnostics.*"
 """
+
 from __future__ import annotations
 
 import re

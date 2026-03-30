@@ -7,6 +7,7 @@ Covers:
 
 REQ-STATE-004, REQ-ARCH-004, REQ-CONF-003
 """
+
 import pytest
 
 from ugtsdti.core.errors import InvalidConfigError

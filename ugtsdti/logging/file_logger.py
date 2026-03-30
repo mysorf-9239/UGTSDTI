@@ -1,4 +1,5 @@
 """Offline-capable file logger."""
+
 from __future__ import annotations
 
 import json

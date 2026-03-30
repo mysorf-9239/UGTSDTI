@@ -1,4 +1,5 @@
 """Checkpoint bundle contracts and I/O."""
+
 from __future__ import annotations
 
 import json

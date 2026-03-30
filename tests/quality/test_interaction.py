@@ -2,6 +2,7 @@
 
 REQ-INT-001, REQ-ARCH-001
 """
+
 from __future__ import annotations
 
 import pytest

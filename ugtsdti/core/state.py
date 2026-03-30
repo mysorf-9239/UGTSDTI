@@ -6,6 +6,7 @@ Design rules (REQ-STATE-001, REQ-STATE-002):
 - Overwriting an existing key raises KeyCollisionError.
 - Sensitive decision/postprocess surfaces are isolated on read to reduce silent mutation.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy

@@ -8,6 +8,7 @@ Covers:
 
 REQ-STATE-001, REQ-STATE-002
 """
+
 import pytest
 
 from ugtsdti.core.errors import KeyCollisionError

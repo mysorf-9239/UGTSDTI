@@ -1,4 +1,5 @@
 """Integration test for full-pipeline evaluation and artifact output."""
+
 from __future__ import annotations
 
 from dataclasses import asdict

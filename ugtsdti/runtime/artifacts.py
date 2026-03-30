@@ -1,4 +1,5 @@
 """Artifact bundle writer for reproducibility outputs."""
+
 from __future__ import annotations
 
 import json

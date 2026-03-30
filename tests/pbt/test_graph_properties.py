@@ -1,4 +1,5 @@
 """Property-based tests for graph planning invariants."""
+
 from __future__ import annotations
 
 import pytest

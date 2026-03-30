@@ -4,6 +4,7 @@ All top-level sections from design Section 7.2.
 
 REQ-CONF-001, REQ-CONF-003
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -2,6 +2,7 @@
 
 REQ-GRAPH-001, REQ-GRAPH-002
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -1,4 +1,5 @@
 """Data contracts for materialized datasets and split manifests."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field

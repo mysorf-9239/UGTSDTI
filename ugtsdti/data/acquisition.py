@@ -1,4 +1,5 @@
 """Offline-first raw data acquisition helpers."""
+
 from __future__ import annotations
 
 import csv

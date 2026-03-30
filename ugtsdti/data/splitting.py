@@ -1,4 +1,5 @@
 """Deterministic partition-aware split artifact generation for S1-S4 protocols."""
+
 from __future__ import annotations
 
 import hashlib

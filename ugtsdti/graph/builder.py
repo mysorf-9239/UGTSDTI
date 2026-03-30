@@ -2,6 +2,7 @@
 
 REQ-GRAPH-002, REQ-ARCH-004
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -112,7 +113,7 @@ class GraphBuilder:
                 # Single-producer enforcement
                 if key in producers:
                     raise KeyCollisionError(
-                        f"Output key {key!r} is produced by both " f"{producers[key]!r} and {defn.name!r}.",
+                        f"Output key {key!r} is produced by both {producers[key]!r} and {defn.name!r}.",
                         stage="graph",
                         component="GraphBuilder",
                         key=key,

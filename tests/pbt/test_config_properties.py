@@ -1,4 +1,5 @@
 """Property-based tests for config normalization."""
+
 from __future__ import annotations
 
 import copy

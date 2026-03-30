@@ -1,4 +1,5 @@
 """Built-in no-op interaction used by the minimal baseline."""
+
 from __future__ import annotations
 
 from typing import Any

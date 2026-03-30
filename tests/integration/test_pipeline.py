@@ -1,4 +1,5 @@
 """Integration tests for the minimal baseline pipeline."""
+
 from __future__ import annotations
 
 import pytest

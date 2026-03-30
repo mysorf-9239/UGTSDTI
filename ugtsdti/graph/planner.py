@@ -2,6 +2,7 @@
 
 REQ-GRAPH-002, REQ-GRAPH-003, REQ-QUAL-004
 """
+
 from __future__ import annotations
 
 from collections import deque

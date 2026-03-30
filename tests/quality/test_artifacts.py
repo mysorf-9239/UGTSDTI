@@ -1,4 +1,5 @@
 """Tests for artifact bundles and performance/concurrency invariants."""
+
 from __future__ import annotations
 
 import json
