@@ -59,13 +59,13 @@ Có 4 checkpoint:
   - Verify state boundary reads không còn leak mutation dễ dàng
   - _Requirements: REQ-INTG-001, REQ-INTG-002_
 
-- [ ] 4. Siết graph runtime lifecycle semantics
-  - [ ] 4.1 Chốt runtime lifecycle contract trong code/docs
+- [x] 4. Siết graph runtime lifecycle semantics
+  - [x] 4.1 Chốt runtime lifecycle contract trong code/docs
     - persistent runtime theo executor hay stateless-only
     - _Requirements: REQ-INTG-003_
-  - [ ] 4.2 Nếu giữ persistent runtime, đồng bộ docs/tests cho determinism assumptions
+  - [x] 4.2 Nếu giữ persistent runtime, đồng bộ docs/tests cho determinism assumptions
     - _Requirements: REQ-INTG-003_
-  - [ ] 4.3 Viết regression tests cho runtime reuse semantics
+  - [x] 4.3 Viết regression tests cho runtime reuse semantics
     - Same executor
     - fresh executor
     - checkpoint-loaded executor

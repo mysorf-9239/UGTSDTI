@@ -413,3 +413,54 @@ class TestRuntimeLifecycle:
 
         assert first_state.get("counter.out") == 1
         assert second_state.get("counter.out") == 2
+
+    def test_fresh_engine_starts_new_runtime_lifecycle(self):
+        spec = NodePluginSpec(type_key="counter", output_attrs=["out"])
+
+        class CounterRuntime(NodeRuntime):
+            def __init__(self):
+                self._count = 0
+
+            def forward(self, inputs, context):
+                del inputs, context
+                self._count += 1
+                return {"out": self._count}
+
+        registry = _make_registry((spec, CounterRuntime))
+        plan = _build_and_plan(registry, {"nodes": [{"name": "counter", "type_key": "counter", "inputs": []}]})
+
+        first_engine = GraphEngine(registry)
+        first_state, first_writer = _make_state_and_writer()
+        first_engine.run(plan, first_state, first_writer, _make_context())
+
+        second_engine = GraphEngine(registry)
+        second_state, second_writer = _make_state_and_writer()
+        second_engine.run(plan, second_state, second_writer, _make_context())
+
+        assert first_state.get("counter.out") == 1
+        assert second_state.get("counter.out") == 1
+
+    def test_clear_runtime_cache_resets_runtime_lifecycle(self):
+        spec = NodePluginSpec(type_key="counter", output_attrs=["out"])
+
+        class CounterRuntime(NodeRuntime):
+            def __init__(self):
+                self._count = 0
+
+            def forward(self, inputs, context):
+                del inputs, context
+                self._count += 1
+                return {"out": self._count}
+
+        registry = _make_registry((spec, CounterRuntime))
+        engine = GraphEngine(registry)
+        plan = _build_and_plan(registry, {"nodes": [{"name": "counter", "type_key": "counter", "inputs": []}]})
+
+        first_state, first_writer = _make_state_and_writer()
+        engine.run(plan, first_state, first_writer, _make_context())
+        engine.clear_runtime_cache()
+        second_state, second_writer = _make_state_and_writer()
+        engine.run(plan, second_state, second_writer, _make_context())
+
+        assert first_state.get("counter.out") == 1
+        assert second_state.get("counter.out") == 1

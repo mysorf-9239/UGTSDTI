@@ -59,6 +59,12 @@ class GraphTrace:
 class GraphEngine:
     """Executes a GraphPlan against a State using a NodeRegistry.
 
+    Runtime lifecycle contract:
+    - Runtime instances are persistent per ``GraphEngine`` instance.
+    - Re-running the same plan on the same engine reuses compatible runtimes.
+    - Creating a fresh engine creates a fresh runtime lifecycle.
+    - Call ``clear_runtime_cache()`` to force a new runtime lifecycle on demand.
+
     Runtime loop per node:
     1. Materialize declared inputs from State (shallow — no full State copy).
     2. Call NodeRuntime.forward(inputs, context).
@@ -171,6 +177,15 @@ class GraphEngine:
     def get_runtime(self, node_name: str) -> Any | None:
         """Return the most recently bound runtime for *node_name* if available."""
         return self._runtimes_by_name.get(node_name)
+
+    def clear_runtime_cache(self) -> None:
+        """Reset the runtime lifecycle for this engine.
+
+        After calling this method, subsequent ``run()`` calls rebuild runtimes
+        from their definitions instead of reusing prior instances.
+        """
+        self._runtime_cache.clear()
+        self._runtimes_by_name.clear()
 
     # ------------------------------------------------------------------
     # Private helpers
