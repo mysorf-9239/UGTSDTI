@@ -148,19 +148,19 @@ Có 4 checkpoint:
   - [ ]* 12.3 Nếu cần, thêm config surface cho artifact cadence
     - _Requirements: REQ-INTG-010_
 
-- [ ] 13. Cập nhật traceability và collateral
-  - [ ] 13.1 Sync `.docs/traceability.md` với `REQ-INTG-*`
+- [x] 13. Cập nhật traceability và collateral
+  - [x] 13.1 Sync `.docs/traceability.md` với `REQ-INTG-*`
     - _Requirements: REQ-INTG-011_
-  - [ ] 13.2 Sync design/docs nếu public surface đổi
+  - [x] 13.2 Sync design/docs nếu public surface đổi
     - _Requirements: REQ-INTG-011_
 
-- [ ] 14. Checkpoint 3 — Reproducibility / coverage semantics sạch
+- [x] 14. Checkpoint 3 — Reproducibility / coverage semantics sạch
   - Verify config hash không bị path-only drift
   - Verify requested scenarios không còn biến mất ngầm
   - Verify validator/runtime share cùng semantics ở các đường critical
   - _Requirements: REQ-INTG-006, REQ-INTG-007, REQ-INTG-008_
 
-- [ ] 15. Checkpoint 4 — Integrity-hardening baseline complete
+- [x] 15. Checkpoint 4 — Integrity-hardening baseline complete
   - Verify:
     - normalization không đổi semantics runtime
     - state/read surfaces không leak mutation lớn

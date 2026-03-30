@@ -307,7 +307,7 @@ Mặc định hardening:
 
 Nếu cần behavior này cho ablation/debug:
 
-- phải có flag explicit như `allow_ambiguous_first: true`
+- phải có flag explicit như `allow_multi_output_first: true`
 
 ---
 
@@ -331,6 +331,12 @@ Suggested policy:
 - checkpoint: theo epoch/cadence
 - canonical artifact bundle: final eval hoặc final checkpoint
 - interim bundle nếu có phải đặt namespace riêng như `snapshots/`
+
+Current implementation target:
+
+- trainer step writes snapshot bundles under `artifacts/<run_id>/snapshots/<label>/`
+- evaluator writes canonical final bundle under `artifacts/<run_id>/`
+- CLI train writes a final train bundle at end-of-run so run identity and final model lineage remain materialized even without a separate eval command
 
 ---
 

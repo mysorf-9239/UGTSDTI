@@ -2,28 +2,28 @@
 
 ## Purpose
 
-Matrix nay map `REQ-HARD-*` cua pha research hardening sang design, config surface, implementation, va tests dang cover.
+Matrix này map `REQ-INTG-*` của pha integrity hardening sang design, config surface, implementation, và tests đang cover.
 
 ## Matrix
 
 | Requirement | Design / Docs | Config Surface | Implementation | Validation |
 | --- | --- | --- | --- | --- |
-| `REQ-HARD-001` Scenario protocol correctness | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 4 | `data.*`, `scenario.*`, split manifests `scenario_partitions.*` | `ugtsdti/data/contracts.py`, `ugtsdti/data/splitting.py`, `ugtsdti/data/loader.py` | `tests/quality/test_data.py`, `tests/pbt/test_data_properties.py` |
-| `REQ-HARD-002` Split leakage validation | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 4.4 | split manifest `protocol_report`, partition artifacts | `ugtsdti/data/validate.py` | `tests/quality/test_data.py`, `tests/pbt/test_data_properties.py` |
-| `REQ-HARD-003` Runtime interaction contract enforcement | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 5 | `interaction.order`, `interaction.dependencies`, plugin output keys | `ugtsdti/interaction/engine.py`, `ugtsdti/interaction/registry.py`, `ugtsdti/trainer/trainer.py` | `tests/quality/test_interaction.py`, `tests/integration/test_pipeline.py` |
-| `REQ-HARD-004` State mutability discipline | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 2.3 | implicit state boundary contract | `ugtsdti/core/state.py` | `tests/quality/test_state.py` |
-| `REQ-HARD-005` Identity consistency | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 6 | CLI run identity, logs dir, artifact/checkpoint identity metadata | `ugtsdti/cli/main.py`, `ugtsdti/runtime/identity.py`, `ugtsdti/runtime/artifacts.py`, `ugtsdti/runtime/checkpoint.py` | `tests/integration/test_cli.py`, `tests/quality/test_runtime.py` |
-| `REQ-HARD-006` Reproducibility key integration | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 6 | `data.dataset`, `data.preprocessing_version`, `data.split_version`, `runtime.seed` | `ugtsdti/cli/main.py`, `ugtsdti/runtime/identity.py`, `ugtsdti/runtime/checkpoint.py` | `tests/integration/test_cli.py`, `tests/quality/test_runtime.py` |
-| `REQ-HARD-007` Metric correctness | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 7 | `metrics.enabled`, `metrics.by_scenario` | `ugtsdti/postprocess/metrics.py` | `tests/quality/test_postprocess.py` |
-| `REQ-HARD-008` Uncertainty semantic honesty | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 8 | `interaction.*.type: uncertainty.sample_variance | uncertainty.confidence_proxy` | `ugtsdti/interaction/uncertainty.py`, `ugtsdti/decision/trust.py`, `ugtsdti/config/validate.py` | `tests/quality/test_interaction.py`, `tests/quality/test_decision.py`, `tests/integration/test_pipeline.py` |
-| `REQ-HARD-009` Trust / gate semantic clarity | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 9 | `decision.mode`, `decision.strategy`, `training.gate.trainable` | `ugtsdti/config/normalize.py`, `ugtsdti/config/validate.py`, `ugtsdti/decision/module.py`, `ugtsdti/trainer/trainer.py` | `tests/quality/test_config.py`, `tests/integration/test_orchestration.py` |
-| `REQ-HARD-010` Training loop minimum research usability | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 10 | `training.loop.*`, `training.optimizer.*`, `runtime.checkpoint_path` | `ugtsdti/cli/main.py`, `ugtsdti/runtime/adapter.py`, `ugtsdti/runtime/defaults.py`, `ugtsdti/trainer/trainer.py`, `ugtsdti/trainer/evaluator.py` | `tests/integration/test_cli.py`, `tests/integration/test_orchestration.py`, `tests/quality/test_runtime.py` |
-| `REQ-HARD-011` Custom plugin usability | `.kiro/specs/ugtsdti-research-hardening/design.md` Section 11 | `runtime.plugin_registrars` | `ugtsdti/runtime/plugins.py`, `ugtsdti/cli/main.py`, `ugtsdti/config/validate.py` | `tests/integration/test_cli.py` |
-| `REQ-HARD-012` Traceability update | `.kiro/specs/ugtsdti-research-hardening/requirements.md`, `.kiro/specs/ugtsdti-research-hardening/tasks.md` | N/A | `.docs/traceability.md`, spec docs | `tests/integration/test_cli.py`, `tests/quality/test_config.py`, `tests/quality/test_runtime.py` |
+| `REQ-INTG-001` Normalization preserves semantics | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 4 | `graph.nodes[*].inputs`, `roles.*.outputs`, hashing canonicalization | `ugtsdti/config/normalize.py`, `ugtsdti/runtime/identity.py` | `tests/quality/test_config.py`, `tests/pbt/test_config_properties.py`, `tests/quality/test_runtime.py` |
+| `REQ-INTG-002` State read immutability | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 5 | implicit state read policy for sensitive namespaces | `ugtsdti/core/state.py`, `ugtsdti/trainer/trainer.py` | `tests/quality/test_state.py`, `tests/integration/test_pipeline.py` |
+| `REQ-INTG-003` Graph runtime lifecycle explicit | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 6 | executor / runtime cache lifecycle | `ugtsdti/graph/engine.py` | `tests/quality/test_graph_engine.py` |
+| `REQ-INTG-004` Interaction runtime enforces declared inputs | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 7 | `interaction.order`, module declared `inputs` | `ugtsdti/interaction/engine.py`, `ugtsdti/interaction/registry.py` | `tests/quality/test_interaction.py`, `tests/integration/test_pipeline.py` |
+| `REQ-INTG-005` Checkpoint restore fail-closed | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 8 | `runtime.checkpoint_path` | `ugtsdti/trainer/trainer.py`, `ugtsdti/runtime/checkpoint.py` | `tests/quality/test_runtime.py`, `tests/integration/test_pipeline.py`, `tests/integration/test_cli.py` |
+| `REQ-INTG-006` Reproducibility hash reflects research semantics | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 9 | `runtime.*` operational paths excluded from hash | `ugtsdti/runtime/identity.py` | `tests/quality/test_runtime.py` |
+| `REQ-INTG-007` Scenario coverage explicit and complete | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 10 | `scenario.eval`, loader permissive vs strict coverage | `ugtsdti/data/loader.py`, `ugtsdti/cli/main.py` | `tests/quality/test_data.py`, `tests/integration/test_cli.py` |
+| `REQ-INTG-008` Validator/runtime canonical semantics | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 11 | validator injection, decision fallback, plugin registrars | `ugtsdti/config/validate.py`, `ugtsdti/cli/main.py`, `ugtsdti/runtime/plugins.py` | `tests/quality/test_config.py`, `tests/integration/test_cli.py` |
+| `REQ-INTG-009` Role aggregation must not fail silently | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 12 | `roles.*.aggregation`, `roles.*.allow_multi_output_first` | `ugtsdti/roles/binder.py`, `ugtsdti/config/validate.py`, `ugtsdti/trainer/trainer.py` | `tests/quality/test_roles.py`, `tests/quality/test_config.py`, `tests/integration/test_pipeline.py` |
+| `REQ-INTG-010` Artifact emission respects lifecycle | `.kiro/specs/ugtsdti-integrity-hardening/design.md` Section 13 | canonical final bundle vs `snapshots/` bundles | `ugtsdti/runtime/artifacts.py`, `ugtsdti/trainer/trainer.py`, `ugtsdti/trainer/evaluator.py`, `ugtsdti/cli/main.py` | `tests/quality/test_artifacts.py`, `tests/integration/test_orchestration.py`, `tests/integration/test_cli.py` |
+| `REQ-INTG-011` Traceability update | `.kiro/specs/ugtsdti-integrity-hardening/{requirements,design,tasks}.md` | N/A | `.docs/traceability.md` | repo audit + spec/task completion |
 
 ## Notes
 
-- Heuristic gate hien duoc chot boi `decision.mode: heuristic`; runtime learned gate chua duoc implement va validator fail-closed khi `training.gate.trainable: true`.
-- Train loop hardening hien duoc phan anh boi `training.loop.{epochs, checkpoint_every_epochs, summary_every_steps, eval_every_epochs, eval_partition}`.
-- Eval lineage co the nap `runtime.checkpoint_path`; `config_hash` canonicalization bo qua field nay de khong lam lech reproducibility lineage.
-- Custom plugin validation hien tai la plugin-aware o CLI path: default registries duoc load truoc, sau do moi apply `runtime.plugin_registrars` neu co.
+- Runtime lifecycle hiện được chốt là persistent theo `GraphEngine` / `PipelineExecutor`; determinism claim chỉ defensible trong executor lifecycle đã được kiểm soát.
+- `State` hiện có isolated read path cho namespaces nhạy cảm; graph hot path vẫn giữ raw read semantics vì performance.
+- `Decision` fallback semantics được sync theo runtime hiện có: một branch còn sống vẫn hợp lệ, không cần khai báo fallback tường minh chỉ để qua validator.
+- `roles.<name>.allow_multi_output_first` là explicit escape hatch cho các case debug/ablation; mặc định hardening sẽ reject multi-output `first`.
+- Canonical artifact bundle hiện nằm ở `artifacts/<run_id>/`, còn trainer snapshots nằm ở `artifacts/<run_id>/snapshots/<label>/`.
