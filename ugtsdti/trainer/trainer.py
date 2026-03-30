@@ -392,6 +392,8 @@ class Trainer:
                 execution_trace=asdict(trace),
                 state_boundary_summaries=trace.state_boundary_summaries,
                 logs_dir=logs_dir,
+                bundle_kind="snapshot",
+                snapshot_label=f"epoch-{epoch:04d}-step-{step_idx:08d}",
             )
 
         return TrainStepResult(

@@ -7,7 +7,7 @@ import os
 import shutil
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -30,9 +30,15 @@ class ArtifactWriter:
         execution_trace: dict[str, Any] | None = None,
         state_boundary_summaries: dict[str, Any] | None = None,
         logs_dir: str | Path | None = None,
+        bundle_kind: Literal["final", "snapshot"] = "final",
+        snapshot_label: str | None = None,
     ) -> Path:
         run_id = str(identity["run_id"])
-        bundle_dir = self._root / run_id
+        run_root = self._root / run_id
+        bundle_dir = run_root
+        if bundle_kind == "snapshot":
+            label = snapshot_label or "snapshot"
+            bundle_dir = run_root / "snapshots" / label
         bundle_dir.mkdir(parents=True, exist_ok=True)
         (bundle_dir / "logs").mkdir(exist_ok=True)
 
@@ -50,7 +56,20 @@ class ArtifactWriter:
         if logs_dir is not None:
             self._copy_logs(Path(logs_dir), bundle_dir / "logs")
 
+        self._write_manifest(run_root)
         return bundle_dir
+
+    def _write_manifest(self, run_root: Path) -> None:
+        snapshots_dir = run_root / "snapshots"
+        snapshot_labels = (
+            sorted(path.name for path in snapshots_dir.iterdir() if path.is_dir()) if snapshots_dir.exists() else []
+        )
+        payload = {
+            "canonical_bundle": "." if (run_root / "identity.json").exists() else None,
+            "latest_snapshot": snapshot_labels[-1] if snapshot_labels else None,
+            "snapshot_labels": snapshot_labels,
+        }
+        self._write_json(run_root / "artifact_manifest.json", payload)
 
     def _write_yaml(self, path: Path, payload: dict[str, Any]) -> None:
         self._atomic_write(path, yaml.safe_dump(_serialize_payload(payload), sort_keys=True))

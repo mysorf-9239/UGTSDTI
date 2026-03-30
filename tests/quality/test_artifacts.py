@@ -92,6 +92,37 @@ def test_artifact_writer_serializes_tensors_and_paths(tmp_path):
     assert "weights.bin" in config_text
 
 
+def test_artifact_writer_distinguishes_final_bundle_from_snapshots(tmp_path):
+    identity = build_experiment_identity({"model": "baseline"})
+    writer = ArtifactWriter(tmp_path / "artifacts")
+
+    snapshot_dir = writer.write_bundle(
+        identity=identity.to_dict(),
+        config={"version": "1.0"},
+        metrics={"metrics.loss": 1.0},
+        diagnostics={},
+        split_manifest={"dataset": "davis"},
+        model_state={"weight": [1]},
+        bundle_kind="snapshot",
+        snapshot_label="epoch-0001-step-00000001",
+    )
+    final_dir = writer.write_bundle(
+        identity=identity.to_dict(),
+        config={"version": "1.0"},
+        metrics={"metrics.loss": 0.5},
+        diagnostics={},
+        split_manifest={"dataset": "davis"},
+        model_state={"weight": [2]},
+        bundle_kind="final",
+    )
+
+    manifest = json.loads((final_dir / "artifact_manifest.json").read_text(encoding="utf-8"))
+    assert snapshot_dir == final_dir / "snapshots" / "epoch-0001-step-00000001"
+    assert (final_dir / "model.pt").exists()
+    assert manifest["canonical_bundle"] == "."
+    assert manifest["latest_snapshot"] == "epoch-0001-step-00000001"
+
+
 def test_reproducibility_key_stays_stable_while_run_identity_changes():
     identity1 = build_experiment_identity({"decision": {"type": "identity"}})
     identity2 = build_experiment_identity({"decision": {"type": "identity"}})

@@ -88,6 +88,7 @@ class Evaluator:
                 execution_trace=asdict(traces[0]),
                 state_boundary_summaries=traces[0].state_boundary_summaries,
                 logs_dir=logs_dir,
+                bundle_kind="final",
             )
 
         highlighted = ["s4"] if any(key.startswith("metrics.s4.") for key in metrics) else []

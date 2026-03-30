@@ -248,11 +248,13 @@ def test_trainer_writes_artifact_bundle_with_provided_model_state(tmp_path):
         model_state={"student": {"weights": [1.0]}},
     )
 
-    bundle_dir = tmp_path / "artifacts" / identity.run_id
-    assert (bundle_dir / "model.pt").exists()
+    run_dir = tmp_path / "artifacts" / identity.run_id
+    snapshot_dir = run_dir / "snapshots" / "epoch-0000-step-00000001"
+    assert (snapshot_dir / "model.pt").exists()
+    assert (run_dir / "artifact_manifest.json").exists()
 
     torch = pytest.importorskip("torch")
-    payload = torch.load(bundle_dir / "model.pt", map_location="cpu", weights_only=False)
+    payload = torch.load(snapshot_dir / "model.pt", map_location="cpu", weights_only=False)
     assert payload["student"]["weights"] == [1.0]
 
 

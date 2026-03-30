@@ -206,11 +206,11 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
     global_step = 0
     last_checkpoint = None
     last_eval_metrics: dict[str, Any] = {}
+    last_train_result = None
 
     try:
         for epoch_idx in range(int(loop_cfg["epochs"])):
             epoch_number = epoch_idx + 1
-            last_train_result = None
             for batch_idx, batch in enumerate(batches):
                 should_checkpoint = (
                     batch_idx == len(batches) - 1 and epoch_number % int(loop_cfg["checkpoint_every_epochs"]) == 0
@@ -289,6 +289,20 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
             )
             + "\n"
         )
+        if last_train_result is not None:
+            safe_snapshot = last_train_result.state.snapshot_isolated()
+            artifact_writer.write_bundle(
+                identity=runtime_identity,
+                config=runtime_cfg,
+                metrics={key: value for key, value in safe_snapshot.items() if key.startswith("metrics.")},
+                diagnostics={key: value for key, value in safe_snapshot.items() if key.startswith("diagnostics.")},
+                split_manifest=split_manifest,
+                model_state=executor.model_state(runtime_cfg),
+                execution_trace=last_train_result.trace.__dict__,
+                state_boundary_summaries=last_train_result.trace.state_boundary_summaries,
+                logs_dir=str(logs_dir),
+                bundle_kind="final",
+            )
     finally:
         logger.close()
 

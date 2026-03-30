@@ -140,10 +140,10 @@ Có 4 checkpoint:
   - [x] 11.3 Viết tests cho ambiguous `first` aggregation
     - _Requirements: REQ-INTG-009_
 
-- [ ] 12. Làm rõ artifact cadence semantics
-  - [ ] 12.1 Tách canonical artifact bundle khỏi step-level snapshots
+- [x] 12. Làm rõ artifact cadence semantics
+  - [x] 12.1 Tách canonical artifact bundle khỏi step-level snapshots
     - _Requirements: REQ-INTG-010_
-  - [ ] 12.2 Đồng bộ docs/tests cho artifact lifecycle
+  - [x] 12.2 Đồng bộ docs/tests cho artifact lifecycle
     - _Requirements: REQ-INTG-010_
   - [ ]* 12.3 Nếu cần, thêm config surface cho artifact cadence
     - _Requirements: REQ-INTG-010_
