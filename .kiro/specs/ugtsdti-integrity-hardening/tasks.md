@@ -131,13 +131,13 @@ Có 4 checkpoint:
   - [x] 10.4 Viết regression tests cho validator/runtime agreement
     - _Requirements: REQ-INTG-008_
 
-- [ ] 11. Hardening role aggregation semantics
-  - [ ] 11.1 Chốt policy cho `aggregation: first` với nhiều outputs
+- [x] 11. Hardening role aggregation semantics
+  - [x] 11.1 Chốt policy cho `aggregation: first` với nhiều outputs
     - reject mặc định hoặc explicit allow flag
     - _Requirements: REQ-INTG-009_
-  - [ ] 11.2 Thêm validation path tương ứng
+  - [x] 11.2 Thêm validation path tương ứng
     - _Requirements: REQ-INTG-009_
-  - [ ] 11.3 Viết tests cho ambiguous `first` aggregation
+  - [x] 11.3 Viết tests cho ambiguous `first` aggregation
     - _Requirements: REQ-INTG-009_
 
 - [ ] 12. Làm rõ artifact cadence semantics

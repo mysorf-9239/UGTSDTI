@@ -166,6 +166,7 @@ class PipelineExecutor:
                     role=role_name,
                     outputs=list(outputs or []),
                     aggregation=role_cfg.get("aggregation", "first"),
+                    allow_multi_output_first=bool(role_cfg.get("allow_multi_output_first", False)),
                 )
             )
         return bindings

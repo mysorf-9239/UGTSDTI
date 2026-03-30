@@ -557,6 +557,17 @@ class TestTeacherStudentAvailability:
         cfg["modalities"]["student"]["uses"] = ["sequence"]
         assert_valid(cfg)
 
+    def test_first_aggregation_with_multiple_outputs_requires_explicit_allow(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["roles"]["student"]["outputs"] = ["student_head.logits", "student_head.logits"]
+        assert_invalid(cfg, "allow_multi_output_first")
+
+    def test_first_aggregation_with_multiple_outputs_can_be_explicitly_allowed(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["roles"]["student"]["outputs"] = ["student_head.logits", "student_head.logits"]
+        cfg["roles"]["student"]["allow_multi_output_first"] = True
+        assert_valid(cfg)
+
 
 class TestBaselineNoopPath:
     """3g: baseline no-op path valid when teacher/KD/uncertainty disabled."""

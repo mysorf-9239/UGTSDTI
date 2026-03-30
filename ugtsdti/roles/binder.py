@@ -21,6 +21,7 @@ class RoleBinding:
     role: str
     outputs: list[str]
     aggregation: Literal["first", "mean"] = "first"
+    allow_multi_output_first: bool = False
 
 
 class RoleBinder:
@@ -54,6 +55,14 @@ class RoleBinder:
             if not binding.outputs:
                 raise InvalidRoleBindingError(
                     f"Role {binding.role!r} must bind at least one graph output.",
+                    stage="role_binding",
+                    component=binding.role,
+                    key=role_key,
+                )
+            if binding.aggregation == "first" and len(binding.outputs) > 1 and not binding.allow_multi_output_first:
+                raise InvalidRoleBindingError(
+                    f"Role {binding.role!r} config is ambiguous: aggregation='first' with multiple outputs "
+                    "requires allow_multi_output_first=true.",
                     stage="role_binding",
                     component=binding.role,
                     key=role_key,

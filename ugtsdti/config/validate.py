@@ -215,6 +215,15 @@ class ConfigValidator:
                         stage="config_validate",
                         key=f"roles.{role_name}.outputs",
                     ) from exc
+            aggregation = str(role_cfg.get("aggregation", "first"))
+            allow_multi_output_first = bool(role_cfg.get("allow_multi_output_first", False))
+            if aggregation == "first" and len(outputs) > 1 and not allow_multi_output_first:
+                raise InvalidConfigError(
+                    f"Role '{role_name}' uses aggregation='first' with multiple outputs. "
+                    "Set roles.<name>.allow_multi_output_first=true to make this selection explicit.",
+                    stage="config_validate",
+                    key=f"roles.{role_name}.outputs",
+                )
 
     def _check_interaction_schema(self, cfg: dict[str, Any]) -> None:
         interaction = cfg.get("interaction", {})

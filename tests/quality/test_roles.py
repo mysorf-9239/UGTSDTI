@@ -33,6 +33,39 @@ class TestRoleBinder:
         with pytest.raises(InvalidRoleBindingError, match="missing graph output"):
             binder.bind(state, writer)
 
+    def test_first_aggregation_with_multiple_outputs_requires_explicit_allow(self):
+        state, writer = _make_state_and_writer(
+            **{
+                "head_a.logits": 1.0,
+                "head_b.logits": 2.0,
+            }
+        )
+        binder = RoleBinder(
+            [RoleBinding(role="student", outputs=["head_a.logits", "head_b.logits"], aggregation="first")]
+        )
+        with pytest.raises(InvalidRoleBindingError, match="allow_multi_output_first"):
+            binder.bind(state, writer)
+
+    def test_first_aggregation_with_multiple_outputs_can_be_explicitly_allowed(self):
+        state, writer = _make_state_and_writer(
+            **{
+                "head_a.logits": 1.0,
+                "head_b.logits": 2.0,
+            }
+        )
+        binder = RoleBinder(
+            [
+                RoleBinding(
+                    role="student",
+                    outputs=["head_a.logits", "head_b.logits"],
+                    aggregation="first",
+                    allow_multi_output_first=True,
+                )
+            ]
+        )
+        binder.bind(state, writer)
+        assert state.get("student.logits") == 1.0
+
     def test_invalid_role_naming_raises(self):
         state, writer = _make_state_and_writer(**{"student_head.logits": 1.0})
         binder = RoleBinder([RoleBinding(role="student.bad", outputs=["student_head.logits"])])
