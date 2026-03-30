@@ -3,7 +3,7 @@
 Properties:
 - idempotent: normalize(normalize(cfg)) == normalize(cfg)
 - serializable: NormalizedConfig.to_dict() round-trips cleanly
-- stable: to_dict() output is stable enough to hash
+- stable: order-insensitive fields are normalized deterministically
 - MUST NOT move plugins between stages
 - MUST NOT infer hidden loss mappings
 
@@ -90,8 +90,7 @@ class ConfigNormalizer:
 
     Normalization:
     - fills in documented defaults for optional fields;
-    - sorts list fields for stability (e.g. interaction.order is preserved as-is
-      since order matters, but modalities.available is sorted);
+    - normalizes only fields that are semantically order-insensitive;
     - does NOT move plugins between stages;
     - does NOT infer hidden loss mappings;
     - is idempotent: calling normalize twice produces the same result.
@@ -220,12 +219,11 @@ class ConfigNormalizer:
         # Normalize type key: prefer 'type_key', fall back to 'type'
         if "type" in result and "type_key" not in result:
             result["type_key"] = result.pop("type")
-        # Sort inputs for stability
+        # Preserve declaration order for semantically-sensitive node fields.
         if "inputs" in result and isinstance(result["inputs"], list):
-            result["inputs"] = sorted(result["inputs"])
-        # Sort output_attrs for stability
+            result["inputs"] = list(result["inputs"])
         if "output_attrs" in result and isinstance(result["output_attrs"], list):
-            result["output_attrs"] = sorted(result["output_attrs"])
+            result["output_attrs"] = list(result["output_attrs"])
         return result
 
     def _normalize_roles(self, raw: Any) -> dict[str, Any]:

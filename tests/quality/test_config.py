@@ -660,6 +660,22 @@ class TestConfigNormalizerIdempotency:
         norm = normalizer.normalize(cfg)
         assert norm.modalities["available"] == ["sequence", "structure"]
 
+    def test_normalize_preserves_graph_node_input_order(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["graph"]["nodes"]["student_encoder"]["inputs"] = ["protein_seq", "drug_seq"]
+
+        norm = normalizer.normalize(cfg)
+
+        assert norm.graph["nodes"]["student_encoder"]["inputs"] == ["protein_seq", "drug_seq"]
+
+    def test_normalize_preserves_graph_node_output_attr_order(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["graph"]["nodes"]["student_encoder"]["output_attrs"] = ["projection", "embedding"]
+
+        norm = normalizer.normalize(cfg)
+
+        assert norm.graph["nodes"]["student_encoder"]["output_attrs"] == ["projection", "embedding"]
+
     def test_normalize_loss_map_shorthand_expanded(self):
         cfg = _minimal_student_only_cfg()
         cfg["interaction"] = {

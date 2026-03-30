@@ -53,3 +53,12 @@ def test_normalize_round_trip_through_yaml_preserves_semantics(cfg):
     renormalized = normalizer.normalize(reparsed).to_dict()
 
     assert renormalized == normalized
+
+
+@given(_valid_normalizer_cfgs(), st.permutations(["drug_seq", "protein_seq"]))
+def test_normalize_preserves_graph_input_order(cfg, ordered_inputs):
+    cfg["graph"]["nodes"]["student_encoder"]["inputs"] = list(ordered_inputs)
+
+    normalized = normalizer.normalize(cfg).to_dict()
+
+    assert normalized["graph"]["nodes"]["student_encoder"]["inputs"] == list(ordered_inputs)

@@ -52,6 +52,42 @@ def test_experiment_identity_ignores_runtime_checkpoint_path_for_hash():
     assert identity1.config_hash == identity2.config_hash
 
 
+def test_experiment_identity_preserves_order_sensitive_graph_inputs_in_hash():
+    base_cfg = {
+        "graph": {
+            "nodes": {
+                "encoder": {
+                    "inputs": ["drug_seq", "protein_seq"],
+                }
+            }
+        }
+    }
+    reordered_cfg = {
+        "graph": {
+            "nodes": {
+                "encoder": {
+                    "inputs": ["protein_seq", "drug_seq"],
+                }
+            }
+        }
+    }
+
+    identity1 = build_experiment_identity(base_cfg)
+    identity2 = build_experiment_identity(reordered_cfg)
+
+    assert identity1.config_hash != identity2.config_hash
+
+
+def test_experiment_identity_canonicalizes_order_insensitive_eval_scenarios_for_hash():
+    base_cfg = {"scenario": {"eval": ["s1", "s4", "s2"]}}
+    reordered_cfg = {"scenario": {"eval": ["s2", "s1", "s4"]}}
+
+    identity1 = build_experiment_identity(base_cfg)
+    identity2 = build_experiment_identity(reordered_cfg)
+
+    assert identity1.config_hash == identity2.config_hash
+
+
 def test_runtime_adapter_resolves_operational_knobs():
     adapted = RuntimeAdapter().adapt(
         {

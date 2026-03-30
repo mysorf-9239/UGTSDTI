@@ -76,4 +76,29 @@ def _canonicalize_config_for_hash(config: dict[str, Any]) -> dict[str, Any]:
     runtime = canonical.get("runtime")
     if isinstance(runtime, dict):
         runtime.pop("checkpoint_path", None)
+    normalized = _canonicalize_value(canonical)
+    if isinstance(normalized, dict):
+        return normalized
+    return {"config": normalized}
+
+
+def _canonicalize_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        canonical: dict[str, Any] = {}
+        for key, item in value.items():
+            canonical[str(key)] = _canonicalize_mapping_entry(str(key), item)
+        return canonical
+    if isinstance(value, list):
+        return [_canonicalize_value(item) for item in value]
+    return value
+
+
+def _canonicalize_mapping_entry(key: str, value: Any) -> Any:
+    canonical = _canonicalize_value(value)
+    if not isinstance(canonical, list):
+        return canonical
+
+    if key in {"eval", "available", "uses", "enabled"}:
+        return sorted(canonical, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+
     return canonical
