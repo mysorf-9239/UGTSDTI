@@ -71,13 +71,13 @@ Có 4 checkpoint:
     - checkpoint-loaded executor
     - _Requirements: REQ-INTG-003_
 
-- [ ] 5. Siết interaction runtime input contracts
-  - [ ] 5.1 Sửa `InteractionEngine` để materialize declared inputs fail-closed
+- [x] 5. Siết interaction runtime input contracts
+  - [x] 5.1 Sửa `InteractionEngine` để materialize declared inputs fail-closed
     - Missing input -> explicit error
     - _Requirements: REQ-INTG-004_
-  - [ ] 5.2 Đồng bộ interaction runtime behavior với planner contract
+  - [x] 5.2 Đồng bộ interaction runtime behavior với planner contract
     - _Requirements: REQ-INTG-004, REQ-INTG-008_
-  - [ ] 5.3 Viết unit/integration tests cho missing declared input
+  - [x] 5.3 Viết unit/integration tests cho missing declared input
     - _Requirements: REQ-INTG-004_
 
 - [ ] 6. Hardening checkpoint restore integrity

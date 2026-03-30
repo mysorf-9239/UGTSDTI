@@ -135,6 +135,31 @@ class TestNoOpInteraction:
 
 
 class TestInteractionEngine:
+    def test_runtime_missing_declared_input_fails_closed(self):
+        registry = InteractionRegistry()
+        registry.register(
+            InteractionPluginSpec(type_key="var", output_keys_fn=lambda params: ["teacher.var"]),
+            _MissingOutputRuntime,
+        )
+        plan = InteractionPlanner(registry).plan(
+            {
+                "order": ["var"],
+                "dependencies": {},
+                "var": {"type": "var", "inputs": ["teacher.logits"]},
+            },
+            available_inputs={"teacher.logits"},
+        )
+        state = State()
+        writer = StateWriter(state)
+
+        with pytest.raises(MissingDependencyError, match="teacher.logits"):
+            InteractionEngine(registry).run(
+                plan,
+                state=state,
+                writer=writer,
+                context=ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+            )
+
     def test_runtime_missing_declared_key_fails_closed(self):
         registry = InteractionRegistry()
         registry.register(
