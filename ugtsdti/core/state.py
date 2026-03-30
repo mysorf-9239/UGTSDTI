@@ -4,7 +4,7 @@ Design rules (REQ-STATE-001, REQ-STATE-002):
 - State is a write-once, single-producer, monotonically-growing key-value store.
 - Only StateWriter.commit() may add keys; nodes/plugins MUST NOT mutate State directly.
 - Overwriting an existing key raises KeyCollisionError.
-- snapshot() returns a shallow copy so callers cannot mutate internal storage.
+- Sensitive decision/postprocess surfaces are isolated on read to reduce silent mutation.
 """
 from __future__ import annotations
 
@@ -33,7 +33,14 @@ class State:
 
         Raises KeyError if the key has not been committed yet.
         """
-        return self._store[key]
+        value = self._store[key]
+        if _should_isolate_on_read(key):
+            return _isolate_value(value)
+        return value
+
+    def get_isolated(self, key: str) -> Any:
+        """Return an isolated copy of the committed value for *key*."""
+        return _isolate_value(self._store[key])
 
     def has(self, key: str) -> bool:
         """Return True if *key* has been committed to this State."""
@@ -50,6 +57,10 @@ class State:
         cannot mutate State by modifying the snapshot.
         """
         return dict(self._store)
+
+    def snapshot_isolated(self) -> dict[str, Any]:
+        """Return a per-key isolated snapshot for boundary-safe inspection."""
+        return {key: self.get(key) for key in self.keys()}
 
 
 class StateWriter:
@@ -129,3 +140,9 @@ def _isolate_value(value: Any) -> Any:
         return deepcopy(value)
     except Exception:
         return value
+
+
+def _should_isolate_on_read(key: str) -> bool:
+    if key in {"teacher.logits", "student.logits", "logits", "gate.alpha"}:
+        return True
+    return key.startswith(("loss.", "metrics.", "diagnostics."))

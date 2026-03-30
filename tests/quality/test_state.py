@@ -188,3 +188,32 @@ class TestMutationIsolation:
         tensor.add_(1.0)
 
         assert torch.equal(state.get("logits"), torch.tensor([[1.0], [2.0]]))
+
+    def test_sensitive_tensor_read_is_isolated_from_state_storage(self):
+        torch = pytest.importorskip("torch")
+        state, writer = make_state_and_writer()
+        writer.commit("p", {"logits": torch.tensor([[1.0], [2.0]])})
+
+        read_value = state.get("logits")
+        read_value.add_(5.0)
+
+        assert torch.equal(state.get("logits"), torch.tensor([[1.0], [2.0]]))
+
+    def test_sensitive_nested_mapping_read_is_isolated_from_state_storage(self):
+        state, writer = make_state_and_writer()
+        writer.commit("p", {"metrics.report": {"auroc": [0.8, 0.9]}})
+
+        read_value = state.get("metrics.report")
+        read_value["auroc"].append(1.0)
+
+        assert state.get("metrics.report") == {"auroc": [0.8, 0.9]}
+
+    def test_snapshot_isolated_returns_safe_copy_for_sensitive_values(self):
+        torch = pytest.importorskip("torch")
+        state, writer = make_state_and_writer()
+        writer.commit("p", {"gate.alpha": torch.tensor([[0.6], [0.4]])})
+
+        snap = state.snapshot_isolated()
+        snap["gate.alpha"].mul_(0.0)
+
+        assert torch.equal(state.get("gate.alpha"), torch.tensor([[0.6], [0.4]]))

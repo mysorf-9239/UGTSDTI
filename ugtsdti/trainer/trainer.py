@@ -358,11 +358,12 @@ class Trainer:
             if bundle is not None:
                 self._checkpoint_io.save(bundle, checkpoint_path)
         if self._artifact_writer is not None and identity is not None and normalized_config is not None:
+            safe_snapshot = state.snapshot_isolated()
             self._artifact_writer.write_bundle(
                 identity=_identity_dict(identity),
                 config=normalized_config,
-                metrics={key: value for key, value in state.snapshot().items() if key.startswith("metrics.")},
-                diagnostics={key: value for key, value in state.snapshot().items() if key.startswith("diagnostics.")},
+                metrics={key: value for key, value in safe_snapshot.items() if key.startswith("metrics.")},
+                diagnostics={key: value for key, value in safe_snapshot.items() if key.startswith("diagnostics.")},
                 split_manifest=split_manifest or {},
                 model_state=resolved_model_state
                 if resolved_model_state is not None
@@ -483,7 +484,7 @@ def _autocast_context(context: ExecutionContext) -> Any:
 
 def _collect_scalar_metrics(state: State) -> dict[str, float]:
     metrics: dict[str, float] = {}
-    for key, value in state.snapshot().items():
+    for key, value in state.snapshot_isolated().items():
         if not (key.startswith("loss.") or key.startswith("metrics.") or key.startswith("diagnostics.")):
             continue
         scalar = _to_scalar(value)

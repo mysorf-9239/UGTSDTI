@@ -37,18 +37,18 @@ Có 4 checkpoint:
     - **Property 2: path/profile-only changes không đổi semantic runtime config**
     - _Requirements: REQ-INTG-001, REQ-INTG-006_
 
-- [ ] 2. Hardening state read immutability
-  - [ ] 2.1 Thiết kế read policy cho `State`
+- [x] 2. Hardening state read immutability
+  - [x] 2.1 Thiết kế read policy cho `State`
     - Raw vs isolated reads
     - Boundary-sensitive namespaces
     - _Requirements: REQ-INTG-002_
-  - [ ] 2.2 Triển khai API/read path an toàn cho boundary-sensitive values
+  - [x] 2.2 Triển khai API/read path an toàn cho boundary-sensitive values
     - `get_isolated()` hoặc equivalent executor-side safe path
     - _Requirements: REQ-INTG-002_
-  - [ ] 2.3 Audit pipeline stages đang đọc trực tiếp state values
+  - [x] 2.3 Audit pipeline stages đang đọc trực tiếp state values
     - Decision, metrics, loss, artifacts, evaluator, trainer
     - _Requirements: REQ-INTG-002_
-  - [ ] 2.4 Viết tests cho mutation-after-read leaks
+  - [x] 2.4 Viết tests cho mutation-after-read leaks
     - Tensor
     - nested dict/list
     - decision/postprocess boundary values
