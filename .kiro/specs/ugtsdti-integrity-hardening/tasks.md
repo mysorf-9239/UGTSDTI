@@ -121,14 +121,14 @@ Có 4 checkpoint:
   - [x] 9.4 Viết integration tests cho multi-scenario eval coverage
     - _Requirements: REQ-INTG-007_
 
-- [ ] 10. Đồng bộ validator và runtime semantics
-  - [ ] 10.1 Sửa CLI validation path để không bỏ qua validator injection
+- [x] 10. Đồng bộ validator và runtime semantics
+  - [x] 10.1 Sửa CLI validation path để không bỏ qua validator injection
     - _Requirements: REQ-INTG-008_
-  - [ ] 10.2 Đồng bộ decision fallback semantics giữa validator và runtime
+  - [x] 10.2 Đồng bộ decision fallback semantics giữa validator và runtime
     - _Requirements: REQ-INTG-008_
-  - [ ] 10.3 Rà lại plugin-aware validation với runtime registries
+  - [x] 10.3 Rà lại plugin-aware validation với runtime registries
     - _Requirements: REQ-INTG-008_
-  - [ ] 10.4 Viết regression tests cho validator/runtime agreement
+  - [x] 10.4 Viết regression tests cho validator/runtime agreement
     - _Requirements: REQ-INTG-008_
 
 - [ ] 11. Hardening role aggregation semantics

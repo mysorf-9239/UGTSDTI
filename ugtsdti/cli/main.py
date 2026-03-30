@@ -344,15 +344,7 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
     runtime_state = RuntimeAdapter().adapt(cfg)
     seed_everything(runtime_state["seed"], deterministic=runtime_state["deterministic"])
 
-    graph_registry = build_default_graph_registry()
-    interaction_registry = build_default_interaction_registry()
-    registrars = list(cfg.get("runtime", {}).get("plugin_registrars", []))
-    if registrars:
-        apply_runtime_registrars(
-            registrars,
-            graph_registry=graph_registry,
-            interaction_registry=interaction_registry,
-        )
+    graph_registry, interaction_registry = _build_runtime_registries(cfg)
 
     runtime_cfg = dict(cfg)
     runtime_cfg["graph"] = _graph_nodes_as_list(dict(cfg.get("graph", {})))
@@ -369,19 +361,24 @@ def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecu
 
 
 def _validate_raw_config(raw_cfg: dict[str, Any], validator: ConfigValidator) -> None:
+    graph_registry, interaction_registry = _build_runtime_registries(raw_cfg)
+    validator.bind_registries(
+        graph_registry=graph_registry,
+        interaction_registry=interaction_registry,
+    ).validate(raw_cfg)
+
+
+def _build_runtime_registries(cfg: dict[str, Any]) -> tuple[Any, Any]:
     graph_registry = build_default_graph_registry()
     interaction_registry = build_default_interaction_registry()
-    registrars = list(raw_cfg.get("runtime", {}).get("plugin_registrars", []))
+    registrars = list(cfg.get("runtime", {}).get("plugin_registrars", []))
     if registrars:
         apply_runtime_registrars(
             registrars,
             graph_registry=graph_registry,
             interaction_registry=interaction_registry,
         )
-    ConfigValidator(
-        graph_registry=graph_registry,
-        interaction_registry=interaction_registry,
-    ).validate(raw_cfg)
+    return graph_registry, interaction_registry
 
 
 def _logs_dir(runtime_state: dict[str, Any], run_id: str) -> Path:

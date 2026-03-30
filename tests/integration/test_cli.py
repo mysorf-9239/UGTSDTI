@@ -11,6 +11,7 @@ import yaml
 from ugtsdti.cli import resolve_sweep_targets, run_cli
 from ugtsdti.config.loader import ConfigLoader
 from ugtsdti.config.normalize import ConfigNormalizer
+from ugtsdti.config.validate import ConfigValidator
 from ugtsdti.runtime import CheckpointIO
 
 
@@ -170,6 +171,49 @@ def test_cli_validate_invalid_registrar_path_fails_closed(tmp_path):
 
     assert exit_code == 1
     assert "not callable" in buffer.getvalue() or "Could not import runtime registrar module" in buffer.getvalue()
+
+
+def test_cli_validate_uses_injected_validator_with_runtime_registries(tmp_path):
+    class TrackingValidator(ConfigValidator):
+        def __init__(self) -> None:
+            super().__init__()
+            self.called = False
+
+        def validate(self, cfg: dict[str, object]) -> None:
+            self.called = True
+            assert self._graph_registry is not None
+            assert self._interaction_registry is not None
+            self._graph_registry.get_spec("encoder.echo")
+            self._interaction_registry.get_spec("noop.echo")
+            super().validate(cfg)
+
+    cfg = _valid_cfg()
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.echo",
+            "inputs": ["drug_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    cfg["interaction"]["noop"]["type"] = "noop.echo"
+    cfg["runtime"] = {"plugin_registrars": ["tests.support_plugins.register_test_runtime_plugins"]}
+    config_path = tmp_path / "custom_validator.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+    validator = TrackingValidator()
+
+    exit_code = run_cli(["validate", str(config_path)], stdout=buffer, validator=validator)
+
+    assert exit_code == 0
+    assert validator.called is True
+    assert buffer.getvalue().strip() == "VALID"
 
 
 def test_cli_sweep_resolves_normalized_parameter_targets(tmp_path):

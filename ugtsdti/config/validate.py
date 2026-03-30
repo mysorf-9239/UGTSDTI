@@ -81,6 +81,17 @@ class ConfigValidator:
         self._graph_registry = graph_registry
         self._interaction_registry = interaction_registry
 
+    def bind_registries(
+        self,
+        *,
+        graph_registry: Any | None = None,
+        interaction_registry: Any | None = None,
+    ) -> ConfigValidator:
+        """Bind runtime registries used for plugin-aware validation."""
+        self._graph_registry = graph_registry
+        self._interaction_registry = interaction_registry
+        return self
+
     def validate(self, cfg: dict[str, Any]) -> None:
         """Run all validation steps in order.
 
@@ -633,19 +644,13 @@ class ConfigValidator:
         strategy = decision.get("strategy", "")
         decision_type = decision.get("type", "")
 
-        # If soft blending or uncertainty-based decision, teacher should be present
-        if strategy in ("soft",) or "gate" in decision_type:
-            if not has_teacher:
-                # Check if fallback is configured
-                fallback = decision.get("fallback", {})
-                if not fallback.get("no_teacher"):
-                    raise InvalidConfigError(
-                        f"Decision strategy '{strategy or decision_type}' requires a teacher role, "
-                        f"but no 'teacher' role is configured and no fallback.no_teacher is set.",
-                        stage="config_validate",
-                        component="decision",
-                        key="decision.strategy",
-                    )
+        if (strategy in ("soft",) or "gate" in decision_type) and not (has_teacher or has_student):
+            raise InvalidConfigError(
+                f"Decision strategy '{strategy or decision_type}' requires at least one role logits branch.",
+                stage="config_validate",
+                component="decision",
+                key="decision.strategy",
+            )
 
     # --- 3g: gate semantics clarity ----------------------------------
 

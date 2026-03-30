@@ -506,7 +506,7 @@ class TestTeacherStudentAvailability:
         }
         assert_valid(cfg)
 
-    def test_soft_decision_without_teacher_and_no_fallback_fails(self):
+    def test_soft_decision_without_teacher_and_no_fallback_uses_runtime_default_fallback(self):
         cfg = _minimal_student_only_cfg()
         cfg["decision"] = {
             "type": "gate.uncertainty",
@@ -514,7 +514,7 @@ class TestTeacherStudentAvailability:
             "strategy": "soft",
             "fallback": {},  # no fallback configured
         }
-        assert_invalid(cfg, "teacher")
+        assert_valid(cfg)
 
     def test_soft_decision_without_teacher_but_with_fallback_passes(self):
         cfg = _minimal_student_only_cfg()
