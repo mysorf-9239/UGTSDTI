@@ -93,7 +93,7 @@ Có 4 checkpoint:
   - [x] 6.4 Viết tests cho partial restore, unsupported restore, unknown node state
     - _Requirements: REQ-INTG-005_
 
-- [ ] 7. Checkpoint 2 — Runtime contracts fail-closed
+- [x] 7. Checkpoint 2 — Runtime contracts fail-closed
   - Verify interaction runtime không còn drop missing inputs
   - Verify checkpoint restore không còn success giả
   - Verify runtime lifecycle semantics được test/document rõ
