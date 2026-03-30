@@ -129,6 +129,7 @@ class ConfigValidator:
         self._check_roles_schema(cfg)
         self._check_interaction_schema(cfg)
         self._check_decision_schema(cfg)
+        self._check_training_schema(cfg)
         self._check_loss_schema(cfg)
         self._check_scenario_schema(cfg)
 
@@ -310,6 +311,172 @@ class ConfigValidator:
                 f"Decision mode {mode!r} is unsupported. Expected 'heuristic' or 'learned'.",
                 stage="config_validate",
                 key="decision.mode",
+            )
+
+    def _check_training_schema(self, cfg: dict[str, Any]) -> None:
+        training = cfg.get("training", {})
+        if not isinstance(training, dict):
+            raise InvalidConfigError(
+                "Config section 'training' must be a mapping.",
+                stage="config_validate",
+                key="training",
+            )
+
+        optimizer = training.get("optimizer", {})
+        if not isinstance(optimizer, dict):
+            raise InvalidConfigError(
+                "Config 'training.optimizer' must be a mapping.",
+                stage="config_validate",
+                key="training.optimizer",
+            )
+        optimizer_type = str(optimizer.get("type", "adam")).lower()
+        if optimizer_type not in {"sgd", "adam", "adamw"}:
+            raise InvalidConfigError(
+                f"Unsupported optimizer type {optimizer_type!r}.",
+                stage="config_validate",
+                key="training.optimizer.type",
+            )
+        if float(optimizer.get("lr", 0.001)) <= 0.0:
+            raise InvalidConfigError(
+                "training.optimizer.lr must be > 0.",
+                stage="config_validate",
+                key="training.optimizer.lr",
+            )
+        if float(optimizer.get("weight_decay", 0.0)) < 0.0:
+            raise InvalidConfigError(
+                "training.optimizer.weight_decay must be >= 0.",
+                stage="config_validate",
+                key="training.optimizer.weight_decay",
+            )
+
+        scheduler = training.get("scheduler", {})
+        if not isinstance(scheduler, dict):
+            raise InvalidConfigError(
+                "Config 'training.scheduler' must be a mapping.",
+                stage="config_validate",
+                key="training.scheduler",
+            )
+        scheduler_type = str(scheduler.get("type", "none")).lower()
+        if scheduler_type not in {"none", "step", "plateau"}:
+            raise InvalidConfigError(
+                f"Unsupported scheduler type {scheduler_type!r}.",
+                stage="config_validate",
+                key="training.scheduler.type",
+            )
+        if scheduler_type == "step":
+            if int(scheduler.get("step_size", 10)) <= 0:
+                raise InvalidConfigError(
+                    "training.scheduler.step_size must be > 0 for step scheduler.",
+                    stage="config_validate",
+                    key="training.scheduler.step_size",
+                )
+            gamma = float(scheduler.get("gamma", 0.5))
+            if not 0.0 < gamma < 1.0:
+                raise InvalidConfigError(
+                    "training.scheduler.gamma must be in (0, 1) for step scheduler.",
+                    stage="config_validate",
+                    key="training.scheduler.gamma",
+                )
+        if scheduler_type == "plateau":
+            factor = float(scheduler.get("factor", 0.5))
+            if not 0.0 < factor < 1.0:
+                raise InvalidConfigError(
+                    "training.scheduler.factor must be in (0, 1) for plateau scheduler.",
+                    stage="config_validate",
+                    key="training.scheduler.factor",
+                )
+            if int(scheduler.get("patience", 1)) < 0:
+                raise InvalidConfigError(
+                    "training.scheduler.patience must be >= 0 for plateau scheduler.",
+                    stage="config_validate",
+                    key="training.scheduler.patience",
+                )
+            mode = str(scheduler.get("mode", "max")).lower()
+            if mode not in {"max", "min"}:
+                raise InvalidConfigError(
+                    "training.scheduler.mode must be 'max' or 'min' for plateau scheduler.",
+                    stage="config_validate",
+                    key="training.scheduler.mode",
+                )
+
+        loop = training.get("loop", {})
+        if not isinstance(loop, dict):
+            raise InvalidConfigError(
+                "Config 'training.loop' must be a mapping.",
+                stage="config_validate",
+                key="training.loop",
+            )
+        defaults = {
+            "epochs": 1,
+            "checkpoint_every_epochs": 1,
+            "summary_every_steps": 1,
+        }
+        for key in ("epochs", "checkpoint_every_epochs", "summary_every_steps"):
+            if int(loop.get(key, defaults[key])) <= 0:
+                raise InvalidConfigError(
+                    f"training.loop.{key} must be > 0.",
+                    stage="config_validate",
+                    key=f"training.loop.{key}",
+                )
+        eval_every = int(loop.get("eval_every_epochs", 0))
+        if eval_every < 0:
+            raise InvalidConfigError(
+                "training.loop.eval_every_epochs must be >= 0.",
+                stage="config_validate",
+                key="training.loop.eval_every_epochs",
+            )
+        max_grad_norm = loop.get("max_grad_norm", None)
+        if max_grad_norm is not None and float(max_grad_norm) <= 0.0:
+            raise InvalidConfigError(
+                "training.loop.max_grad_norm must be > 0 when provided.",
+                stage="config_validate",
+                key="training.loop.max_grad_norm",
+            )
+        select_checkpoint = str(loop.get("select_checkpoint", "last")).lower()
+        if select_checkpoint not in {"last", "best"}:
+            raise InvalidConfigError(
+                "training.loop.select_checkpoint must be 'last' or 'best'.",
+                stage="config_validate",
+                key="training.loop.select_checkpoint",
+            )
+        best_mode = str(loop.get("best_mode", "max")).lower()
+        if best_mode not in {"max", "min"}:
+            raise InvalidConfigError(
+                "training.loop.best_mode must be 'max' or 'min'.",
+                stage="config_validate",
+                key="training.loop.best_mode",
+            )
+        early = loop.get("early_stopping", {})
+        if not isinstance(early, dict):
+            raise InvalidConfigError(
+                "training.loop.early_stopping must be a mapping.",
+                stage="config_validate",
+                key="training.loop.early_stopping",
+            )
+        if bool(early.get("enabled", False)):
+            if eval_every <= 0:
+                raise InvalidConfigError(
+                    "Early stopping requires training.loop.eval_every_epochs > 0.",
+                    stage="config_validate",
+                    key="training.loop.early_stopping",
+                )
+            if int(early.get("patience", 0)) < 0:
+                raise InvalidConfigError(
+                    "training.loop.early_stopping.patience must be >= 0.",
+                    stage="config_validate",
+                    key="training.loop.early_stopping.patience",
+                )
+            if float(early.get("min_delta", 0.0)) < 0.0:
+                raise InvalidConfigError(
+                    "training.loop.early_stopping.min_delta must be >= 0.",
+                    stage="config_validate",
+                    key="training.loop.early_stopping.min_delta",
+                )
+        if select_checkpoint == "best" and eval_every <= 0:
+            raise InvalidConfigError(
+                "training.loop.select_checkpoint='best' requires eval_every_epochs > 0.",
+                stage="config_validate",
+                key="training.loop.select_checkpoint",
             )
 
     def _check_loss_schema(self, cfg: dict[str, Any]) -> None:

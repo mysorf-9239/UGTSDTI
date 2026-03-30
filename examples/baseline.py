@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import tempfile
 from pathlib import Path
@@ -42,13 +43,17 @@ def main() -> int:
         "batch_size": int(args.batch_size),
         "seed": 7,
     }
-    config["training"]["loop"] = {
-        "epochs": max(1, int(args.epochs)),
-        "checkpoint_every_epochs": 1,
-        "summary_every_steps": 1,
-        "eval_every_epochs": 1,
-        "eval_partition": "test",
-    }
+    loop_cfg = dict(config["training"].get("loop", {}))
+    loop_cfg.update(
+        {
+            "epochs": max(1, int(args.epochs)),
+            "checkpoint_every_epochs": 1,
+            "summary_every_steps": 1,
+            "eval_every_epochs": 1,
+            "eval_partition": "test",
+        }
+    )
+    config["training"]["loop"] = loop_cfg
 
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
         temp_config = Path(handle.name)
@@ -60,8 +65,19 @@ def main() -> int:
             return 1
 
         print("[baseline] train")
-        if run_cli(["train", str(temp_config)]) != 0:
+        train_buffer = io.StringIO()
+        if run_cli(["train", str(temp_config)], stdout=train_buffer) != 0:
+            print(train_buffer.getvalue(), end="")
             return 1
+        print(train_buffer.getvalue(), end="")
+        train_summary = _last_json_line(train_buffer.getvalue())
+        checkpoint_policy = str(config["training"]["loop"].get("select_checkpoint", "last")).lower()
+        checkpoint_path = (
+            train_summary.get("best_checkpoint") if checkpoint_policy == "best" else train_summary.get("checkpoint")
+        ) or train_summary.get("checkpoint")
+        if checkpoint_path:
+            config.setdefault("runtime", {})["checkpoint_path"] = str(checkpoint_path)
+            temp_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
         print("[baseline] eval")
         return run_cli(["eval", str(temp_config)])
@@ -121,6 +137,20 @@ def _prepare_fixture_artifacts(data_dir: Path) -> None:
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     payload = "\n".join(json.dumps(row, sort_keys=True) for row in rows)
     path.write_text((payload + "\n") if payload else "", encoding="utf-8")
+
+
+def _last_json_line(payload: str) -> dict[str, Any]:
+    for line in reversed(payload.splitlines()):
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            decoded = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return decoded
+    return {}
 
 
 def _record(drug_tokens: list[int], protein_tokens: list[int], label: float, scenario: str) -> dict[str, Any]:

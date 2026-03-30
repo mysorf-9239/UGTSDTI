@@ -22,6 +22,7 @@ from ugtsdti.interaction.registry import InteractionPlanner
 from ugtsdti.logging import CompositeLogger, FileLogger, Logger, WandbLogger
 from ugtsdti.runtime import (
     ArtifactWriter,
+    CheckpointBundle,
     CheckpointIO,
     RuntimeAdapter,
     apply_runtime_registrars,
@@ -201,17 +202,36 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
         parameter_groups=executor.parameter_groups(runtime_cfg),
     )
     optimizer = _build_optimizer(cfg, executor, runtime_cfg)
+    scheduler = _build_scheduler(cfg, optimizer)
     evaluator = Evaluator(executor, logger=logger) if eval_batches else None
-    checkpoint_path = Path(runtime_state["checkpoint_dir"]) / f"{runtime_identity['run_id']}.pt"
-    global_step = 0
+    checkpoint_paths = _checkpoint_paths(runtime_state, runtime_identity["run_id"])
+    resume_bundle = _maybe_load_checkpoint(
+        runtime_cfg,
+        runtime_state,
+        executor,
+        runtime_identity,
+        strict_identity=False,
+    )
+    if resume_bundle is not None:
+        _restore_component_state(optimizer, resume_bundle.optimizer_state)
+        _restore_component_state(scheduler, resume_bundle.scheduler_state)
+    global_step = int(resume_bundle.step) + 1 if resume_bundle is not None else 0
+    start_epoch = int(resume_bundle.epoch) + 1 if resume_bundle is not None else 1
     last_checkpoint = None
     last_eval_metrics: dict[str, Any] = {}
     last_train_result = None
     final_bundle_dir: str | None = None
+    loop_cfg = _resolve_loop_cfg(runtime_cfg)
+    best_checkpoint: str | None = None
+    best_metric_name = str(loop_cfg["best_metric"])
+    best_metric_value: float | None = None
+    stopped_early = False
+    early_wait = 0
+    completed_epochs = 0
 
     try:
-        for epoch_idx in range(int(loop_cfg["epochs"])):
-            epoch_number = epoch_idx + 1
+        for epoch_number in range(start_epoch, int(loop_cfg["epochs"]) + 1):
+            completed_epochs = epoch_number
             for batch_idx, batch in enumerate(batches):
                 should_checkpoint = (
                     batch_idx == len(batches) - 1 and epoch_number % int(loop_cfg["checkpoint_every_epochs"]) == 0
@@ -221,9 +241,26 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                     runtime_cfg,
                     context,
                     optimizer=optimizer,
+                    scheduler=None,
                     step_idx=global_step,
                     epoch=epoch_number,
-                    checkpoint_path=str(checkpoint_path) if should_checkpoint else None,
+                    checkpoint_path=str(checkpoint_paths["last"]) if should_checkpoint else None,
+                    checkpoint_bundle=_build_checkpoint_bundle(
+                        identity=runtime_identity,
+                        normalized_config=runtime_cfg,
+                        split_manifest=split_manifest,
+                        model_state=executor.model_state(runtime_cfg),
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        epoch=epoch_number,
+                        step=global_step,
+                        extras={
+                            "best_metric_name": best_metric_name,
+                            "best_metric_value": best_metric_value,
+                        },
+                    )
+                    if should_checkpoint
+                    else None,
                     identity=runtime_identity,
                     normalized_config=runtime_cfg,
                     split_manifest=split_manifest,
@@ -246,7 +283,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                         + "\n"
                     )
                 if should_checkpoint:
-                    last_checkpoint = str(checkpoint_path)
+                    last_checkpoint = str(checkpoint_paths["last"])
 
             if evaluator is not None and epoch_number % int(loop_cfg["eval_every_epochs"]) == 0:
                 eval_result = evaluator.evaluate(
@@ -274,11 +311,75 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                     )
                     + "\n"
                 )
+                current_metric = _metric_value(last_eval_metrics, best_metric_name)
+                if _is_better_metric(
+                    current_metric,
+                    best_metric_value,
+                    mode=str(loop_cfg["best_mode"]),
+                    min_delta=float(loop_cfg["early_stopping"]["min_delta"]),
+                ):
+                    best_metric_value = current_metric
+                    best_checkpoint = str(checkpoint_paths["best"])
+                    early_wait = 0
+                    checkpoint_io.save(
+                        _build_checkpoint_bundle(
+                            identity=runtime_identity,
+                            normalized_config=runtime_cfg,
+                            split_manifest=split_manifest,
+                            model_state=executor.model_state(runtime_cfg),
+                            optimizer=optimizer,
+                            scheduler=scheduler,
+                            epoch=epoch_number,
+                            step=max(0, global_step - 1),
+                            extras={
+                                "best_metric_name": best_metric_name,
+                                "best_metric_value": best_metric_value,
+                            },
+                        ),
+                        checkpoint_paths["best"],
+                    )
+                elif bool(loop_cfg["early_stopping"]["enabled"]):
+                    early_wait += 1
+
+                if _is_plateau_scheduler(scheduler):
+                    _step_plateau_scheduler(scheduler, current_metric)
+                elif scheduler is not None:
+                    scheduler.step()
+
+                if bool(loop_cfg["early_stopping"]["enabled"]) and early_wait > int(
+                    loop_cfg["early_stopping"]["patience"]
+                ):
+                    stopped_early = True
+                    break
+            elif scheduler is not None and not _is_plateau_scheduler(scheduler):
+                scheduler.step()
+        selected_checkpoint = _select_final_checkpoint(
+            loop_cfg=loop_cfg,
+            last_checkpoint=last_checkpoint,
+            best_checkpoint=best_checkpoint,
+        )
+        final_eval_metrics = dict(last_eval_metrics)
+        if eval_batches and selected_checkpoint is not None:
+            selected_bundle = checkpoint_io.load(
+                selected_checkpoint,
+                expected_config_hash=str(runtime_identity["config_hash"]),
+                expected_dataset=str(runtime_cfg.get("data", {}).get("dataset", "")),
+                expected_reproducibility_key=str(runtime_identity["reproducibility_key"]),
+            )
+            executor.load_model_state(runtime_cfg, selected_bundle.model_state)
+            final_result = Evaluator(executor, logger=logger).evaluate(
+                eval_batches,
+                runtime_cfg,
+                _build_context(runtime_state, mode="eval"),
+            )
+            final_eval_metrics = {
+                key: value for key, value in final_result.metrics.items() if key.startswith("metrics.")
+            }
         if last_train_result is not None:
             safe_snapshot = last_train_result.state.snapshot_isolated()
             final_metrics = (
-                last_eval_metrics
-                if last_eval_metrics
+                final_eval_metrics
+                if final_eval_metrics
                 else {key: value for key, value in safe_snapshot.items() if key.startswith("metrics.")}
             )
             final_bundle_dir = str(
@@ -300,13 +401,19 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                 {
                     "artifact_bundle": final_bundle_dir,
                     "batches_per_epoch": len(batches),
+                    "best_checkpoint": best_checkpoint,
+                    "best_metric_name": best_metric_name if best_metric_value is not None else None,
+                    "best_metric_value": best_metric_value,
                     "checkpoint": last_checkpoint,
                     "command": args.command,
                     "epochs": int(loop_cfg["epochs"]),
+                    "epochs_ran": completed_epochs,
+                    "epochs_requested": int(loop_cfg["epochs"]),
                     "eval_partition": eval_partition if eval_batches else None,
-                    "final_eval_metrics": _scalarize_metrics(last_eval_metrics),
+                    "final_eval_metrics": _scalarize_metrics(final_eval_metrics),
                     "logs_dir": str(logs_dir),
                     "steps": global_step,
+                    "stopped_early": stopped_early,
                 },
                 sort_keys=True,
             )
@@ -449,8 +556,7 @@ def _build_optimizer(
     runtime_cfg: dict[str, Any],
 ) -> Any | None:
     try:
-        importlib.import_module("torch")
-        from torch.optim import SGD as SgdOptimizer  # type: ignore[attr-defined]
+        optim_module = importlib.import_module("torch.optim")
     except ImportError:
         return None
 
@@ -459,8 +565,53 @@ def _build_optimizer(
     if not trainable:
         return None
     optimizer_cfg = cfg.get("training", {}).get("optimizer", {})
+    optimizer_type = str(optimizer_cfg.get("type", "adam")).lower()
     lr = float(optimizer_cfg.get("lr", 0.01))
-    return SgdOptimizer(trainable, lr=lr)
+    weight_decay = float(optimizer_cfg.get("weight_decay", 0.0))
+    if optimizer_type == "sgd":
+        return optim_module.SGD(trainable, lr=lr, weight_decay=weight_decay)
+    if optimizer_type == "adam":
+        return optim_module.Adam(trainable, lr=lr, weight_decay=weight_decay)
+    if optimizer_type == "adamw":
+        return optim_module.AdamW(trainable, lr=lr, weight_decay=weight_decay)
+    raise UGTSDTIError(
+        f"Unsupported optimizer type {optimizer_type!r}.",
+        stage="cli",
+        component="main",
+        key="training.optimizer.type",
+    )
+
+
+def _build_scheduler(cfg: dict[str, Any], optimizer: Any | None) -> Any | None:
+    if optimizer is None:
+        return None
+    scheduler_cfg = cfg.get("training", {}).get("scheduler", {})
+    scheduler_type = str(scheduler_cfg.get("type", "none")).lower()
+    if scheduler_type == "none":
+        return None
+    try:
+        lr_scheduler_module = importlib.import_module("torch.optim.lr_scheduler")
+    except ImportError:
+        return None
+    if scheduler_type == "step":
+        return lr_scheduler_module.StepLR(
+            optimizer,
+            step_size=int(scheduler_cfg.get("step_size", 10)),
+            gamma=float(scheduler_cfg.get("gamma", 0.5)),
+        )
+    if scheduler_type == "plateau":
+        return lr_scheduler_module.ReduceLROnPlateau(
+            optimizer,
+            mode=cast(Literal["min", "max"], str(scheduler_cfg.get("mode", "max")).lower()),
+            factor=float(scheduler_cfg.get("factor", 0.5)),
+            patience=int(scheduler_cfg.get("patience", 1)),
+        )
+    raise UGTSDTIError(
+        f"Unsupported scheduler type {scheduler_type!r}.",
+        stage="cli",
+        component="main",
+        key="training.scheduler.type",
+    )
 
 
 def _is_trainable(parameter: Any) -> bool:
@@ -528,12 +679,21 @@ def _resolve_loop_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     summary_every_steps = max(1, int(loop_cfg.get("summary_every_steps", 1)))
     eval_every_epochs = max(0, int(loop_cfg.get("eval_every_epochs", 0)))
     eval_partition = str(loop_cfg.get("eval_partition", "val"))
+    early_cfg = dict(loop_cfg.get("early_stopping", {}))
     return {
         "epochs": epochs,
         "checkpoint_every_epochs": checkpoint_every_epochs,
         "summary_every_steps": summary_every_steps,
         "eval_every_epochs": eval_every_epochs,
         "eval_partition": eval_partition,
+        "select_checkpoint": str(loop_cfg.get("select_checkpoint", "last")).lower(),
+        "best_metric": str(loop_cfg.get("best_metric", "metrics.auroc")),
+        "best_mode": str(loop_cfg.get("best_mode", "max")).lower(),
+        "early_stopping": {
+            "enabled": bool(early_cfg.get("enabled", False)),
+            "patience": max(0, int(early_cfg.get("patience", 0))),
+            "min_delta": max(0.0, float(early_cfg.get("min_delta", 0.0))),
+        },
     }
 
 
@@ -542,18 +702,104 @@ def _maybe_load_checkpoint(
     runtime_state: dict[str, Any],
     executor: PipelineExecutor,
     runtime_identity: dict[str, Any],
+    *,
+    strict_identity: bool = True,
 ) -> Any | None:
     checkpoint_path = runtime_state.get("checkpoint_path")
     if not checkpoint_path:
         return None
     checkpoint = CheckpointIO().load(
         checkpoint_path,
-        expected_config_hash=str(runtime_identity["config_hash"]),
+        expected_config_hash=str(runtime_identity["config_hash"]) if strict_identity else None,
         expected_dataset=str(cfg.get("data", {}).get("dataset", "")),
-        expected_reproducibility_key=str(runtime_identity["reproducibility_key"]),
+        expected_reproducibility_key=str(runtime_identity["reproducibility_key"]) if strict_identity else None,
     )
     executor.load_model_state(cfg, checkpoint.model_state)
     return checkpoint
+
+
+def _restore_component_state(component: Any | None, state: dict[str, Any]) -> None:
+    load_state_dict = getattr(component, "load_state_dict", None)
+    if callable(load_state_dict) and state:
+        load_state_dict(state)
+
+
+def _checkpoint_paths(runtime_state: dict[str, Any], run_id: str) -> dict[str, Path]:
+    checkpoint_dir = Path(runtime_state["checkpoint_dir"])
+    return {
+        "last": checkpoint_dir / f"{run_id}.pt",
+        "best": checkpoint_dir / f"{run_id}.best.pt",
+    }
+
+
+def _build_checkpoint_bundle(
+    *,
+    identity: dict[str, Any],
+    normalized_config: dict[str, Any],
+    split_manifest: dict[str, Any],
+    model_state: dict[str, Any],
+    optimizer: Any | None,
+    scheduler: Any | None,
+    epoch: int,
+    step: int,
+    extras: dict[str, Any] | None = None,
+) -> Any:
+    return CheckpointBundle(
+        model_state=model_state,
+        optimizer_state=_component_state_dict(optimizer),
+        scheduler_state=_component_state_dict(scheduler),
+        rng_state={},
+        epoch=epoch,
+        step=step,
+        identity=dict(identity),
+        config=normalized_config,
+        dataset_metadata=(split_manifest or {}).get("dataset_version", {}),
+        split_metadata=split_manifest or {},
+        extras=dict(extras or {}),
+    )
+
+
+def _component_state_dict(component: Any | None) -> dict[str, Any]:
+    state_dict = getattr(component, "state_dict", None)
+    if callable(state_dict):
+        return dict(state_dict())
+    return {}
+
+
+def _metric_value(metrics: dict[str, Any], key: str) -> float | None:
+    scalarized = _scalarize_metrics(metrics)
+    return scalarized.get(key)
+
+
+def _is_better_metric(current: float | None, best: float | None, *, mode: str, min_delta: float) -> bool:
+    if current is None:
+        return False
+    if best is None:
+        return True
+    if mode == "max":
+        return current > best + min_delta
+    return current < best - min_delta
+
+
+def _is_plateau_scheduler(scheduler: Any | None) -> bool:
+    return scheduler is not None and scheduler.__class__.__name__.lower() == "reducelronplateau"
+
+
+def _step_plateau_scheduler(scheduler: Any | None, metric: float | None) -> None:
+    if scheduler is None or metric is None:
+        return
+    scheduler.step(metric)
+
+
+def _select_final_checkpoint(
+    *,
+    loop_cfg: dict[str, Any],
+    last_checkpoint: str | None,
+    best_checkpoint: str | None,
+) -> str | None:
+    if loop_cfg.get("select_checkpoint") == "best":
+        return best_checkpoint or last_checkpoint
+    return last_checkpoint or best_checkpoint
 
 
 def _scalarize_metrics(metrics: dict[str, Any]) -> dict[str, float]:

@@ -39,13 +39,25 @@ _DEFAULT_TRAINING: dict[str, Any] = {
     "student": {"freeze": False},
     "kd": {"schedule": "constant"},
     "gate": {"trainable": False},
-    "optimizer": {"lr": 0.01},
+    "optimizer": {"type": "adam", "lr": 0.001, "weight_decay": 0.0},
+    "scheduler": {"type": "none"},
     "loop": {
         "epochs": 1,
         "checkpoint_every_epochs": 1,
         "summary_every_steps": 1,
         "eval_every_epochs": 0,
         "eval_partition": "val",
+        "max_grad_norm": None,
+        "fail_on_nonfinite_loss": True,
+        "fail_on_nonfinite_grad": True,
+        "select_checkpoint": "last",
+        "best_metric": "metrics.auroc",
+        "best_mode": "max",
+        "early_stopping": {
+            "enabled": False,
+            "patience": 0,
+            "min_delta": 0.0,
+        },
     },
 }
 

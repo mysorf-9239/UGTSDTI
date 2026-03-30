@@ -49,3 +49,25 @@ Matrix này map `REQ-BL-*` của baseline reference model sang config surface, i
 | `REQ-BL-013` Runtime state round-trip | `.kiro/specs/ugtsdti-baseline-model/design.md` Section 5 | model state / checkpoint lineage | `ugtsdti/trainer/trainer.py`, `ugtsdti/nodes/baseline.py` | `tests/integration/test_baseline_reference.py`, `tests/quality/test_baseline_nodes.py` |
 | `REQ-BL-014` Minimal surface, no extra research logic | `.kiro/specs/ugtsdti-baseline-model/requirements.md` Section 5 | no teacher/KD/uncertainty in canonical config | `configs/baseline_reference.yaml` | config inspection + `tests/integration/test_baseline_reference.py` |
 | `REQ-BL-015` Traceability update | `.kiro/specs/ugtsdti-baseline-model/{requirements,design,tasks}.md` | N/A | `.docs/traceability.md` | repo audit + task completion |
+
+## Baseline Training Hardening Matrix
+
+Matrix này map `REQ-BTH-*` của baseline training hardening sang config surface, implementation, và tests đang cover.
+
+| Requirement | Design / Docs | Config Surface | Implementation | Validation |
+| --- | --- | --- | --- | --- |
+| `REQ-BTH-001` Fixed pipeline compatibility | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Sections 1, 5 | `interaction.noop`, `decision.identity` | `ugtsdti/trainer/trainer.py`, `configs/baseline_reference.yaml` | `tests/integration/test_baseline_reference.py` |
+| `REQ-BTH-002` Long-run trainability | `.kiro/specs/ugtsdti-baseline-training-hardening/requirements.md` | `training.loop.*` | `ugtsdti/cli/main.py`, `ugtsdti/trainer/trainer.py` | `tests/integration/test_baseline_reference.py`, `tests/integration/test_cli.py` |
+| `REQ-BTH-003` Optimizer config surface | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 2.1 | `training.optimizer.type` | `ugtsdti/config/normalize.py`, `ugtsdti/config/validate.py`, `ugtsdti/cli/main.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-004` Scheduler config surface | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 2.2 | `training.scheduler.type` | `ugtsdti/config/normalize.py`, `ugtsdti/config/validate.py`, `ugtsdti/cli/main.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-005` Gradient safety | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 3.6 | `training.loop.max_grad_norm`, `training.loop.fail_on_nonfinite_*` | `ugtsdti/trainer/trainer.py` | `tests/integration/test_baseline_reference.py`, `tests/integration/test_cli.py` |
+| `REQ-BTH-006` Resume integrity | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 3.3 | `runtime.checkpoint_path` | `ugtsdti/cli/main.py`, `ugtsdti/runtime/checkpoint.py`, `ugtsdti/trainer/trainer.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-007` Best checkpoint tracking | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 3.4 | `training.loop.best_metric`, `training.loop.best_mode` | `ugtsdti/cli/main.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-008` Early stopping | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 3.4 | `training.loop.early_stopping.*` | `ugtsdti/config/validate.py`, `ugtsdti/cli/main.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-009` Final evaluation correctness | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 3.5 | `training.loop.select_checkpoint` | `ugtsdti/cli/main.py`, `ugtsdti/trainer/evaluator.py` | `tests/integration/test_cli.py`, `examples/baseline.py` smoke run |
+| `REQ-BTH-010` Baseline workflow correctness | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 5 | `examples/baseline.py`, `scripts/baseline.sh` | `examples/baseline.py`, `scripts/baseline.sh` | local smoke run |
+| `REQ-BTH-011` Reporting surface | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 4 | train summary JSON, artifact bundle | `ugtsdti/cli/main.py`, `ugtsdti/runtime/artifacts.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-012` Deterministic surface preservation | `.kiro/specs/ugtsdti-baseline-training-hardening/requirements.md` | explicit checkpoint selection / config-driven loop | `ugtsdti/runtime/identity.py`, `ugtsdti/cli/main.py` | existing runtime/integration tests |
+| `REQ-BTH-013` Contract preservation | `.kiro/specs/ugtsdti-baseline-training-hardening/requirements.md` | no direct model bypass | `ugtsdti/trainer/trainer.py`, `ugtsdti/graph/engine.py` | code inspection + integration tests |
+| `REQ-BTH-014` Validation | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 2 | optimizer/scheduler/loop validation | `ugtsdti/config/validate.py` | `tests/integration/test_cli.py` |
+| `REQ-BTH-015` Verification | `.kiro/specs/ugtsdti-baseline-training-hardening/tasks.md` | N/A | test suite + smoke run | `tests/integration/test_baseline_reference.py`, `tests/integration/test_cli.py` |

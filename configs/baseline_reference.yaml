@@ -95,13 +95,30 @@ training:
   student:
     freeze: false
   optimizer:
-    lr: 0.05
+    type: adam
+    lr: 0.01
+    weight_decay: 0.0
+  scheduler:
+    type: plateau
+    mode: max
+    factor: 0.5
+    patience: 1
   loop:
-    epochs: 3
+    epochs: 10
     checkpoint_every_epochs: 1
     summary_every_steps: 1
     eval_every_epochs: 1
     eval_partition: test
+    max_grad_norm: 5.0
+    fail_on_nonfinite_loss: true
+    fail_on_nonfinite_grad: true
+    select_checkpoint: best
+    best_metric: metrics.auroc
+    best_mode: max
+    early_stopping:
+      enabled: true
+      patience: 3
+      min_delta: 0.0
 
 loss:
   type: hard

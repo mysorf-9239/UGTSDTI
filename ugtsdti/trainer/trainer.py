@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import copy
+import math
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
-from ugtsdti.core.errors import BatchSchemaError, CheckpointCorruptedError, InvalidConfigError
+from ugtsdti.core.errors import (
+    BatchSchemaError,
+    CheckpointCorruptedError,
+    InvalidConfigError,
+    NumericalInstabilityError,
+)
 from ugtsdti.core.schema import StateSchemaBuilder
 from ugtsdti.core.state import State, StateWriter
 from ugtsdti.decision.base import DecisionModule
@@ -343,8 +349,28 @@ class Trainer:
             state, trace = self._pipeline_executor.run_batch(batch, scheduled_cfg, context)
             loss = state.get("loss.total")
 
+        if _strict_training_flag(scheduled_cfg, "fail_on_nonfinite_loss") and not _is_finite_value(loss):
+            raise NumericalInstabilityError(
+                "Training loss is non-finite.",
+                stage="train",
+                component="Trainer",
+                key="loss.total",
+            )
+
+        grad_norm: float | None = None
         if optimizer is not None and _requires_grad(loss):
             loss.backward()
+            grad_norm = _grad_norm(self._parameter_groups)
+            max_grad_norm = _max_grad_norm(scheduled_cfg)
+            if max_grad_norm is not None:
+                grad_norm = _clip_grad_norm(self._parameter_groups, max_grad_norm)
+            if _strict_training_flag(scheduled_cfg, "fail_on_nonfinite_grad") and not _is_finite_number(grad_norm):
+                raise NumericalInstabilityError(
+                    "Training gradients are non-finite.",
+                    stage="train",
+                    component="Trainer",
+                    key="grad_norm",
+                )
             optimizer.step()
         if scheduler is not None:
             scheduler.step()
@@ -356,6 +382,8 @@ class Trainer:
         logged_metrics["trainer.teacher_frozen"] = 1.0 if freeze_policy["teacher"] else 0.0
         logged_metrics["trainer.student_frozen"] = 1.0 if freeze_policy["student"] else 0.0
         logged_metrics["trainer.gate_trainable"] = 1.0 if freeze_policy["gate"] else 0.0
+        if grad_norm is not None and _is_finite_number(grad_norm):
+            logged_metrics["trainer.grad_norm"] = float(grad_norm)
         if self._logger is not None:
             self._logger.log_metrics(logged_metrics, step=step_idx)
 
@@ -565,3 +593,76 @@ def _component_state_dict(component: Any | None) -> dict[str, Any]:
     if callable(state_dict):
         return dict(state_dict())
     return {}
+
+
+def _strict_training_flag(cfg: dict[str, Any], key: str) -> bool:
+    return bool(cfg.get("training", {}).get("loop", {}).get(key, False))
+
+
+def _max_grad_norm(cfg: dict[str, Any]) -> float | None:
+    value = cfg.get("training", {}).get("loop", {}).get("max_grad_norm", None)
+    if value is None:
+        return None
+    return float(value)
+
+
+def _all_parameters(parameter_groups: dict[str, list[Any]]) -> list[Any]:
+    parameters: list[Any] = []
+    seen: set[int] = set()
+    for group in parameter_groups.values():
+        for parameter in group:
+            marker = id(parameter)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            parameters.append(parameter)
+    return parameters
+
+
+def _grad_norm(parameter_groups: dict[str, list[Any]]) -> float | None:
+    try:
+        import torch
+    except ImportError:
+        return None
+    values: list[float] = []
+    for parameter in _all_parameters(parameter_groups):
+        grad = getattr(parameter, "grad", None)
+        if grad is None:
+            continue
+        values.append(float(torch.linalg.vector_norm(grad.detach()).cpu().item()))
+    if not values:
+        return None
+    return math.sqrt(sum(value * value for value in values))
+
+
+def _clip_grad_norm(parameter_groups: dict[str, list[Any]], max_grad_norm: float) -> float | None:
+    try:
+        import torch
+    except ImportError:
+        return None
+    parameters = [
+        parameter for parameter in _all_parameters(parameter_groups) if getattr(parameter, "grad", None) is not None
+    ]
+    if not parameters:
+        return None
+    norm = torch.nn.utils.clip_grad_norm_(parameters, max_norm=max_grad_norm)
+    return float(norm.detach().cpu().item()) if hasattr(norm, "detach") else float(norm)
+
+
+def _is_finite_value(value: Any) -> bool:
+    if isinstance(value, (int, float)):
+        return value == value and value not in {float("inf"), float("-inf")}
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            return bool(torch.all(torch.isfinite(value)).item())
+    except ImportError:
+        return False
+    return True
+
+
+def _is_finite_number(value: float | None) -> bool:
+    if value is None:
+        return True
+    return value == value and value not in {float("inf"), float("-inf")}

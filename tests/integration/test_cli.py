@@ -398,8 +398,28 @@ def test_cli_train_runs_with_baseline_reference_config(tmp_path):
     assert lines[0].startswith("run_id=")
     assert summary["command"] == "train"
     assert summary["artifact_bundle"]
+    assert summary["best_checkpoint"]
     assert summary["checkpoint"].endswith(".pt")
     assert summary["final_eval_metrics"]["metrics.auroc"] >= 0.0
+
+
+def test_cli_validate_rejects_best_checkpoint_without_eval_cadence(tmp_path):
+    cfg = _baseline_reference_cfg()
+    cfg["scenario"]["eval"] = ["s1"]
+    cfg["training"]["loop"] = {
+        "epochs": 2,
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 0,
+        "eval_partition": "test",
+        "select_checkpoint": "best",
+    }
+    config_path = tmp_path / "invalid_best.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    assert run_cli(["validate", str(config_path)], stdout=buffer) == 1
+    assert "select_checkpoint='best'" in buffer.getvalue()
 
 
 def test_cli_train_final_bundle_prefers_eval_metrics_when_eval_cadence_is_enabled(tmp_path):
@@ -636,6 +656,90 @@ def test_cli_train_checkpoint_can_be_reused_by_eval(tmp_path):
     checkpoint_bundle = CheckpointIO().load(train_summary["checkpoint"])
     artifact_model = CheckpointIO()._load_payload(model_path)
     assert artifact_model["student_head"]["scale"].shape == checkpoint_bundle.model_state["student_head"]["scale"].shape
+
+
+def test_cli_train_resume_and_best_checkpoint_paths_work(tmp_path):
+    records_dir = tmp_path / "data" / "splits" / "davis" / "v1" / "v1"
+    processed_dir = tmp_path / "data" / "processed" / "davis" / "v1"
+    records_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "dataset_version.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "dataset_version": "raw-v1",
+                "preprocessing_version": "v1",
+                "record_count": 6,
+                "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[
+            {"drug_seq": [1, 1, 1, 1], "protein_seq": [1, 1, 1, 1, 1], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [7, 7, 7, 7], "protein_seq": [7, 7, 7, 7, 7], "labels": 0.0, "scenario": "s1"},
+            {"drug_seq": [2, 2, 2, 2], "protein_seq": [2, 2, 2, 2, 2], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [8, 8, 8, 8], "protein_seq": [8, 8, 8, 8, 8], "labels": 0.0, "scenario": "s1"},
+        ],
+        test_rows=[
+            {"drug_seq": [3, 3, 3, 3], "protein_seq": [3, 3, 3, 3, 3], "labels": 1.0, "scenario": "s1"},
+            {"drug_seq": [9, 9, 9, 9], "protein_seq": [9, 9, 9, 9, 9], "labels": 0.0, "scenario": "s1"},
+        ],
+    )
+
+    cfg = _baseline_reference_cfg()
+    cfg["scenario"]["eval"] = ["s1"]
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "batch_size": 2,
+        "seed": 7,
+    }
+    cfg["training"]["loop"] = {
+        "epochs": 2,
+        "checkpoint_every_epochs": 1,
+        "summary_every_steps": 1,
+        "eval_every_epochs": 1,
+        "eval_partition": "test",
+        "select_checkpoint": "best",
+        "best_metric": "metrics.auroc",
+        "best_mode": "max",
+        "early_stopping": {"enabled": False, "patience": 0, "min_delta": 0.0},
+    }
+    train_path = tmp_path / "resume_train.yaml"
+    train_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    train_buffer = io.StringIO()
+
+    assert run_cli(["train", str(train_path)], stdout=train_buffer) == 0
+    train_summary = json.loads([line for line in train_buffer.getvalue().splitlines() if line.strip()][-1])
+    assert train_summary["best_checkpoint"].endswith(".best.pt")
+
+    resumed_cfg = json.loads(json.dumps(cfg))
+    resumed_cfg["training"]["loop"]["epochs"] = 3
+    resumed_cfg["runtime"]["checkpoint_path"] = train_summary["checkpoint"]
+    resumed_path = tmp_path / "resume_train_2.yaml"
+    resumed_path.write_text(yaml.safe_dump(resumed_cfg), encoding="utf-8")
+    resume_buffer = io.StringIO()
+
+    assert run_cli(["train", str(resumed_path)], stdout=resume_buffer) == 0
+    resume_summary = json.loads([line for line in resume_buffer.getvalue().splitlines() if line.strip()][-1])
+    assert resume_summary["steps"] > train_summary["steps"]
+    assert resume_summary["epochs_ran"] == 3
+    assert Path(resume_summary["checkpoint"]).exists()
+
+    eval_cfg = json.loads(json.dumps(resumed_cfg))
+    eval_cfg["runtime"]["checkpoint_path"] = resume_summary["best_checkpoint"] or resume_summary["checkpoint"]
+    eval_path = tmp_path / "resume_eval.yaml"
+    eval_path.write_text(yaml.safe_dump(eval_cfg), encoding="utf-8")
+    eval_buffer = io.StringIO()
+
+    assert run_cli(["eval", str(eval_path)], stdout=eval_buffer) == 0
+    eval_summary = json.loads([line for line in eval_buffer.getvalue().splitlines() if line.strip()][-1])
+    assert eval_summary["checkpoint"] == eval_cfg["runtime"]["checkpoint_path"]
 
 
 def test_cli_train_can_register_runtime_plugins_from_config(tmp_path):
