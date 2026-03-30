@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -203,8 +204,6 @@ def _pair_identity(row: dict[str, Any]) -> str:
 
 def _ensure_finite(key: str, value: Any) -> None:
     try:
-        import math
-
         import torch
 
         if isinstance(value, torch.Tensor):

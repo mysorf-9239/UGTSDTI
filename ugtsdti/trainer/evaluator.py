@@ -81,6 +81,12 @@ class Evaluator:
         }
         aggregate_trace: dict[str, Any] = {
             "num_batches": len(traces),
+            "num_samples": len(collected.get("scenario", [])),
+            "scenario_counts": {
+                str(label): list(collected.get("scenario", [])).count(label)
+                for label in sorted(set(collected.get("scenario", [])))
+            },
+            "num_traces_kept": len(traces),
             "stage_orders": [list(trace.stage_order) for trace in traces],
             "state_boundary_summaries": aggregate_state_boundaries,
         }

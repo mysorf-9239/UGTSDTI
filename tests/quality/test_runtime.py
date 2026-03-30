@@ -103,6 +103,30 @@ def test_experiment_identity_ignores_runtime_device_and_worker_knobs_for_hash():
     assert identity1.config_hash == identity2.config_hash
 
 
+def test_experiment_identity_ignores_runtime_precision_batch_and_determinism_knobs_for_hash():
+    base_cfg = {
+        "model": "a",
+        "runtime": {
+            "batch_size": 16,
+            "deterministic": False,
+            "precision": "fp32",
+        },
+    }
+    moved_cfg = {
+        "model": "a",
+        "runtime": {
+            "batch_size": 128,
+            "deterministic": True,
+            "precision": "mixed",
+        },
+    }
+
+    identity1 = build_experiment_identity(base_cfg)
+    identity2 = build_experiment_identity(moved_cfg)
+
+    assert identity1.config_hash == identity2.config_hash
+
+
 def test_experiment_identity_preserves_order_sensitive_graph_inputs_in_hash():
     base_cfg = {
         "graph": {
