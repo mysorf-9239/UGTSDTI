@@ -53,6 +53,32 @@ def test_experiment_identity_ignores_runtime_checkpoint_path_for_hash():
     assert identity1.config_hash == identity2.config_hash
 
 
+def test_experiment_identity_ignores_runtime_operational_paths_for_hash():
+    base_cfg = {
+        "model": "a",
+        "runtime": {
+            "device": "cpu",
+            "artifacts_dir": "/tmp/run_a/artifacts",
+            "checkpoint_dir": "/tmp/run_a/checkpoints",
+            "data_dir": "/tmp/run_a/data",
+        },
+    }
+    moved_cfg = {
+        "model": "a",
+        "runtime": {
+            "device": "cpu",
+            "artifacts_dir": "/tmp/run_b/artifacts",
+            "checkpoint_dir": "/tmp/run_b/checkpoints",
+            "data_dir": "/tmp/run_b/data",
+        },
+    }
+
+    identity1 = build_experiment_identity(base_cfg)
+    identity2 = build_experiment_identity(moved_cfg)
+
+    assert identity1.config_hash == identity2.config_hash
+
+
 def test_experiment_identity_preserves_order_sensitive_graph_inputs_in_hash():
     base_cfg = {
         "graph": {

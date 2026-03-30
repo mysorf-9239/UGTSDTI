@@ -99,16 +99,16 @@ Có 4 checkpoint:
   - Verify runtime lifecycle semantics được test/document rõ
   - _Requirements: REQ-INTG-003, REQ-INTG-004, REQ-INTG-005_
 
-- [ ] 8. Dọn reproducibility hashing
-  - [ ] 8.1 Xác định research-semantic vs execution-local runtime fields
+- [x] 8. Dọn reproducibility hashing
+  - [x] 8.1 Xác định research-semantic vs execution-local runtime fields
     - _Requirements: REQ-INTG-006_
-  - [ ] 8.2 Sửa canonical hash logic để bỏ operational-only fields
+  - [x] 8.2 Sửa canonical hash logic để bỏ operational-only fields
     - checkpoint path
     - artifact/log dirs
     - local data dir
     - equivalent profile-local paths
     - _Requirements: REQ-INTG-006_
-  - [ ] 8.3 Viết tests cho path-insensitive config hash
+  - [x] 8.3 Viết tests cho path-insensitive config hash
     - _Requirements: REQ-INTG-006_
 
 - [ ] 9. Siết scenario coverage semantics

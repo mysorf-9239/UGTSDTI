@@ -11,6 +11,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+_RUNTIME_OPERATIONAL_HASH_FIELDS = {
+    "artifacts_dir",
+    "checkpoint_dir",
+    "checkpoint_path",
+    "data_dir",
+}
+
 
 @dataclass(frozen=True)
 class ExperimentIdentity:
@@ -76,7 +83,8 @@ def _canonicalize_config_for_hash(config: dict[str, Any]) -> dict[str, Any]:
     canonical = deepcopy(config)
     runtime = canonical.get("runtime")
     if isinstance(runtime, dict):
-        runtime.pop("checkpoint_path", None)
+        for key in _RUNTIME_OPERATIONAL_HASH_FIELDS:
+            runtime.pop(key, None)
     normalized = _canonicalize_value(canonical)
     if isinstance(normalized, dict):
         return normalized
