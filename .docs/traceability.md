@@ -71,3 +71,18 @@ Matrix này map `REQ-BTH-*` của baseline training hardening sang config surfac
 | `REQ-BTH-013` Contract preservation | `.kiro/specs/ugtsdti-baseline-training-hardening/requirements.md` | no direct model bypass | `ugtsdti/trainer/trainer.py`, `ugtsdti/graph/engine.py` | code inspection + integration tests |
 | `REQ-BTH-014` Validation | `.kiro/specs/ugtsdti-baseline-training-hardening/design.md` Section 2 | optimizer/scheduler/loop validation | `ugtsdti/config/validate.py` | `tests/integration/test_cli.py` |
 | `REQ-BTH-015` Verification | `.kiro/specs/ugtsdti-baseline-training-hardening/tasks.md` | N/A | test suite + smoke run | `tests/integration/test_baseline_reference.py`, `tests/integration/test_cli.py` |
+
+## Baseline Portability Matrix
+
+Matrix này map baseline portability hardening sang config surface, implementation, và tests đang cover.
+
+| Requirement | Design / Docs | Config Surface | Implementation | Validation |
+| --- | --- | --- | --- | --- |
+| `REQ-BP-001` Baseline deployment profiles are config-driven | `README.md` baseline run matrix | `configs/profiles/baseline_{local,cpu,gpu,kaggle}.yaml` | `configs/profiles/baseline_local.yaml`, `configs/profiles/baseline_cpu.yaml`, `configs/profiles/baseline_gpu.yaml`, `configs/profiles/baseline_kaggle.yaml` | `tests/integration/test_baseline_portability.py`, `tests/integration/test_orchestration.py` |
+| `REQ-BP-002` Profiles extend baseline canonical config | `README.md` configuration section | `extends: ../baseline_reference.yaml` | `configs/profiles/baseline_*.yaml` | `tests/integration/test_baseline_portability.py` |
+| `REQ-BP-003` Artifact-backed runtime only | `README.md` data preparation section | `runtime.data_dir`, `data.preprocessing_version`, `data.split_version` | `ugtsdti/cli/main.py`, `ugtsdti/data/loader.py` | `tests/integration/test_baseline_portability.py`, existing CLI/data tests |
+| `REQ-BP-004` Baseline-facing data prep entrypoint | `README.md` data preparation section | script arguments | `scripts/prepare_baseline_artifacts.py`, `ugtsdti/data/{acquisition,preprocessing,splitting}.py` | script review + `tests/integration/test_baseline_portability.py` README drift coverage |
+| `REQ-BP-005` Smoke and real workflows are explicit | `README.md` quick start matrix | `scripts/baseline.sh`, `scripts/baseline_real.sh` | `scripts/baseline.sh`, `scripts/baseline_real.sh`, `examples/baseline.py` | `tests/integration/test_baseline_portability.py` |
+| `REQ-BP-006` `wandb` remains optional | `README.md` wandb section | `logging.backend: wandb` | `ugtsdti/logging/wandb_logger.py`, `configs/profiles/baseline_wandb.yaml` | `tests/integration/test_baseline_portability.py` |
+| `REQ-BP-007` Kaggle path semantics are first-class | `README.md` profile table | `runtime.data_dir`, `runtime.artifacts_dir`, `runtime.checkpoint_dir` | `configs/profiles/baseline_kaggle.yaml` | `tests/integration/test_baseline_portability.py`, `tests/integration/test_orchestration.py` |
+| `REQ-BP-008` README/config drift is checked | `README.md` | referenced baseline configs and scripts | `README.md` | `tests/integration/test_baseline_portability.py` |

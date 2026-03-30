@@ -1,0 +1,46 @@
+extends:
+  - ../baseline_reference.yaml
+experiment:
+  name: baseline-cpu
+data:
+  dataset: davis
+  preprocessing_version: v1
+  split_version: v1
+scenario:
+  train: s1
+  eval:
+    - s1
+    - s2
+    - s3
+    - s4
+training:
+  loop:
+    epochs: 10
+    checkpoint_every_epochs: 1
+    summary_every_steps: 10
+    eval_every_epochs: 1
+    eval_partition: test
+    max_grad_norm: 5.0
+    fail_on_nonfinite_loss: true
+    fail_on_nonfinite_grad: true
+    select_checkpoint: best
+    best_metric: metrics.auroc
+    best_mode: max
+    early_stopping:
+      enabled: true
+      patience: 3
+      min_delta: 0.0
+logging:
+  backend: file
+  trace_execution: false
+  inspect_state: false
+runtime:
+  device: cpu
+  seed: 7
+  deterministic: true
+  precision: fp32
+  num_workers: 0
+  batch_size: 32
+  data_dir: data
+  artifacts_dir: artifacts/baseline/cpu
+  checkpoint_dir: artifacts/baseline/cpu/checkpoints

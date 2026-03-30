@@ -69,33 +69,56 @@ Available environments: `conda-recipes/base.yaml`, `conda-recipes/dev.yaml`, `co
 ## Quick Start
 
 ```bash
-# Validate config before running
-python -m ugtsdti validate --config configs/baseline.yaml
-
-# Train
-python -m ugtsdti train --config configs/baseline.yaml
-
-# Evaluate on all scenarios (S1–S4)
-python -m ugtsdti eval --config configs/baseline.yaml --checkpoint artifacts/<run_id>/model.pt
-
-# Debug run (minimal config, dry-run)
-python -m ugtsdti train --config configs/minimal.yaml --dry-run
-
-# Hyperparameter sweep
-python -m ugtsdti sweep --config configs/sweep.yaml
+python -m ugtsdti validate configs/baseline_reference.yaml
 ```
 
-Or via Makefile:
+### Baseline Run Matrix
+
+| Workflow | Purpose | Entry point |
+| --- | --- | --- |
+| Synthetic smoke | CI / local sanity check, no real data required | [examples/baseline.py](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/examples/baseline.py), [scripts/baseline.sh](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/baseline.sh) |
+| Real artifact-backed baseline | Train/eval on prepared `processed/` + `splits/` artifacts | [scripts/baseline_real.sh](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/baseline_real.sh) |
+| Data preparation for real baseline | Materialize raw/PyTDC data into artifact-backed layout | [scripts/prepare_baseline_artifacts.py](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/scripts/prepare_baseline_artifacts.py) |
+
+### Synthetic smoke workflow
 
 ```bash
-make validate-config   # dry-run config validation
-make train             # train with baseline config
-make eval              # evaluate
-make debug             # minimal dry-run
-make sweep             # hyperparameter sweep
-make test              # run all tests
-make test-pbt          # run property-based tests
+conda activate ugtsdti
+cd UGTSDTI
+bash scripts/baseline.sh
 ```
+
+This path creates a synthetic fixture and runs `validate -> train -> eval`. It is for engineering smoke only, not for reporting research metrics.
+
+### Real baseline workflow
+
+1. Prepare artifact-backed data once:
+
+```bash
+conda activate ugtsdti
+cd UGTSDTI
+python scripts/prepare_baseline_artifacts.py --source csv --dataset davis --raw-csv /path/to/davis.csv
+```
+
+Or, if `PyTDC` is installed in the environment:
+
+```bash
+python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
+```
+
+2. Validate a baseline profile:
+
+```bash
+python -m ugtsdti validate configs/profiles/baseline_cpu.yaml
+```
+
+3. Train + evaluate with the selected checkpoint policy:
+
+```bash
+bash scripts/baseline_real.sh configs/profiles/baseline_cpu.yaml
+```
+
+`baseline_real.sh` always runs `validate -> train -> eval` and injects the chosen checkpoint (`best` or `last`) into the eval run.
 
 ---
 
@@ -118,9 +141,12 @@ UGTSDTI/
 │   ├── trainer/       # Trainer, evaluator, pipeline executor
 │   └── cli/           # CLI entrypoints
 ├── configs/
-│   ├── minimal.yaml   # Student-only baseline (Checkpoint 1)
-│   ├── baseline.yaml  # Full UGTS pipeline
-│   └── sweep.yaml     # Hyperparameter sweep
+│   ├── baseline_reference.yaml
+│   ├── profiles/baseline_local.yaml
+│   ├── profiles/baseline_cpu.yaml
+│   ├── profiles/baseline_gpu.yaml
+│   ├── profiles/baseline_kaggle.yaml
+│   └── profiles/baseline_wandb.yaml
 ├── conda-recipes/
 │   ├── base.yaml
 │   ├── dev.yaml
@@ -147,30 +173,57 @@ UGTSDTI/
 
 ## Data Preparation
 
-Dataset acquisition is a one-time step, separate from training runtime:
+Baseline train/eval is **artifact-backed only**. Runtime never downloads data and never performs preprocessing during `train` or `eval`.
 
-```bash
-# 1. Acquire raw data (requires PyTDC)
-pip install PyTDC
-python -m ugtsdti.data.acquisition --dataset davis
+The expected layout is:
 
-# 2. Preprocess into tensors
-python -m ugtsdti.data.preprocessing --dataset davis
-
-# 3. Generate deterministic splits (S1–S4)
-python -m ugtsdti.data.splitting --dataset davis --seed 42
-
-# 4. Validate data artifacts
-make validate-data
+```text
+data/
+  raw/
+    davis.csv
+  processed/
+    davis/v1/
+      dataset_version.json
+      records.jsonl
+  splits/
+    davis/v1/v1/
+      manifest.json
+      s1/train.jsonl
+      s1/val.jsonl
+      s1/test.jsonl
+      ...
 ```
 
-Training reads only from materialized `.pt` files — no network calls at runtime.
+Prepare those artifacts before training:
+
+```bash
+python scripts/prepare_baseline_artifacts.py --source csv --dataset davis --raw-csv /path/to/davis.csv
+```
+
+Or use `PyTDC` for one-time acquisition/prep:
+
+```bash
+pip install -e ".[acquisition]"
+python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
+```
+
+`PyTDC` is used only for acquisition/prep. Training and evaluation still read only from materialized artifacts.
 
 ---
 
 ## Configuration
 
-Experiments are fully config-driven. Example minimal config:
+Experiments are fully config-driven. The canonical baseline graph lives in [configs/baseline_reference.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/baseline_reference.yaml), and deployment-ready profiles extend it:
+
+| Profile | Intended environment | Default paths / behavior |
+| --- | --- | --- |
+| [baseline_local.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_local.yaml) | local dev run | CPU, small batch, trace enabled |
+| [baseline_cpu.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_cpu.yaml) | local CPU training | CPU, deterministic, artifact-backed |
+| [baseline_gpu.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_gpu.yaml) | local GPU training | CUDA, mixed precision, pin memory |
+| [baseline_kaggle.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_kaggle.yaml) | Kaggle GPU | `/kaggle/input/ugtsdti-data`, `/kaggle/working/artifacts/baseline` |
+| [baseline_wandb.yaml](/Users/mysorf/PythonProject/Bioinformatics/UGTSDTI/configs/profiles/baseline_wandb.yaml) | optional logging overlay | same as local baseline, `logging.backend: wandb` |
+
+Example baseline config:
 
 ```yaml
 version: v1
@@ -193,20 +246,31 @@ graph:
       inputs: [student_encoder.embedding]
 roles:
   student:
-    outputs: [student_head.logits]
+    outputs: [head.logits]
 interaction:
-  order: []
+  order: [noop]
 decision:
   type: identity
-training:
-  student:
-    freeze: false
 loss:
-  type: composite
+  type: hard
   hard_weight: 1.0
 ```
 
 Config supports `extends` for inheritance and `sweep` for hyperparameter search.
+
+### `wandb`
+
+`wandb` remains optional. The framework degrades gracefully if it is unavailable.
+
+To enable it:
+
+```bash
+pip install -e ".[wandb]"
+python -m ugtsdti validate configs/profiles/baseline_wandb.yaml
+bash scripts/baseline_real.sh configs/profiles/baseline_wandb.yaml
+```
+
+The built-in logger initializes `wandb` in offline mode by default. Kaggle and local file logging both default to `logging.backend: file` unless you explicitly choose the `wandb` profile or override the config.
 
 ---
 

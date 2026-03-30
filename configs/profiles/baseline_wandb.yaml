@@ -1,0 +1,8 @@
+extends:
+  - baseline_local.yaml
+experiment:
+  name: baseline-wandb
+logging:
+  backend: wandb
+  trace_execution: false
+  inspect_state: false
