@@ -24,13 +24,18 @@ class DataLoaderFactory:
         batch_size: int = 32,
         scenarios: list[str] | None = None,
         partition: str = "test",
+        allow_missing_scenarios: bool = False,
     ) -> tuple[list[dict[str, Any]], BatchSpec, DatasetVersion, SplitManifest]:
         dataset_version, manifest = DataValidator().validate_artifacts(
             dataset_version_path=dataset_version_path,
             split_manifest_path=split_manifest_path,
         )
         selected_scenarios = list(scenarios or manifest.scenarios)
+        if not selected_scenarios:
+            batch_spec = StateSchemaBuilder().build_batch_spec(cfg)
+            return [], batch_spec, dataset_version, manifest
         records: list[dict[str, Any]] = []
+        scenario_counts: dict[str, int] = {}
         for scenario in selected_scenarios:
             partitions = manifest.scenario_partitions.get(scenario, {})
             split_path = partitions.get(partition)
@@ -41,7 +46,22 @@ class DataLoaderFactory:
                     component="DataLoaderFactory",
                     key=f"{scenario}.{partition}",
                 )
-            records.extend(_read_jsonl(Path(split_path)))
+            rows = _read_jsonl(Path(split_path))
+            scenario_counts[scenario] = len(rows)
+            records.extend(rows)
+        missing_scenarios = sorted(scenario for scenario, count in scenario_counts.items() if count == 0)
+        if missing_scenarios and not allow_missing_scenarios:
+            raise ProcessedSplitMismatchError(
+                f"Requested scenarios {missing_scenarios} produced zero rows for partition {partition!r}.",
+                stage="data",
+                component="DataLoaderFactory",
+                key=f"partition.{partition}",
+                debug_payload={
+                    "requested_scenarios": selected_scenarios,
+                    "missing_scenarios": missing_scenarios,
+                    "partition": partition,
+                },
+            )
         batches = [_collate(records[index : index + batch_size]) for index in range(0, len(records), batch_size)]
         batch_spec = StateSchemaBuilder().build_batch_spec(cfg)
         return batches, batch_spec, dataset_version, manifest

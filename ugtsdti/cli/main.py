@@ -186,7 +186,6 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
             runtime_state,
             scenarios=list(runtime_cfg.get("scenario", {}).get("eval", [])),
             partition=eval_partition,
-            allow_empty=True,
         )
     runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
@@ -467,6 +466,7 @@ def _load_batches(
     scenarios: list[str],
     partition: str,
     allow_empty: bool = False,
+    allow_missing_scenarios: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     data_cfg = dict(cfg.get("data", {}))
     dataset = str(data_cfg.get("dataset", "dataset"))
@@ -483,6 +483,7 @@ def _load_batches(
         batch_size=batch_size,
         scenarios=scenarios,
         partition=partition,
+        allow_missing_scenarios=allow_missing_scenarios,
     )
     batches = [_tensorize_batch(batch) for batch in raw_batches]
     if not batches and not allow_empty:

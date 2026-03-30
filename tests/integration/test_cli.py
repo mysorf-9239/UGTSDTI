@@ -509,3 +509,61 @@ def test_cli_train_can_register_runtime_plugins_from_config(tmp_path):
 
     assert exit_code == 0
     assert '"command": "train"' in buffer.getvalue()
+
+
+def test_cli_eval_fails_when_requested_scenario_has_no_materialized_rows(tmp_path):
+    records_dir = tmp_path / "data" / "splits" / "davis" / "v1" / "s1_v1"
+    processed_dir = tmp_path / "data" / "processed" / "davis" / "v1"
+    records_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "dataset_version.json").write_text(
+        json.dumps(
+            {
+                "dataset": "davis",
+                "dataset_version": "raw-v1",
+                "preprocessing_version": "v1",
+                "record_count": 1,
+                "feature_keys": ["drug_seq", "protein_seq", "labels", "scenario"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _write_partition_manifest(
+        records_dir,
+        train_rows=[{"drug_seq": "AA", "protein_seq": "MK", "labels": 1.0, "scenario": "s1", "partition": "train"}],
+        test_rows=[{"drug_seq": "BB", "protein_seq": "ML", "labels": 0.0, "scenario": "s1", "partition": "test"}],
+    )
+
+    cfg = _valid_cfg()
+    cfg["data"]["preprocessing_version"] = "v1"
+    cfg["data"]["split_version"] = "s1_v1"
+    cfg["scenario"]["eval"] = ["s1", "s4"]
+    cfg["graph"]["nodes"] = [
+        {
+            "name": "student_encoder",
+            "type_key": "encoder.baseline",
+            "inputs": ["drug_seq", "protein_seq"],
+            "output_attrs": ["embedding"],
+        },
+        {
+            "name": "student_head",
+            "type_key": "head.linear",
+            "inputs": ["student_encoder.embedding"],
+            "output_attrs": ["logits"],
+        },
+    ]
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "seed": 7,
+    }
+    config_path = tmp_path / "eval_missing_scenario.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["eval", str(config_path)], stdout=buffer)
+
+    assert exit_code == 1
+    assert "s4" in buffer.getvalue()

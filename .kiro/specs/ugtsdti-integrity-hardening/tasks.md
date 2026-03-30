@@ -111,14 +111,14 @@ Có 4 checkpoint:
   - [x] 8.3 Viết tests cho path-insensitive config hash
     - _Requirements: REQ-INTG-006_
 
-- [ ] 9. Siết scenario coverage semantics
-  - [ ] 9.1 Mở rộng loader/eval path để trả materialized vs missing scenarios
+- [x] 9. Siết scenario coverage semantics
+  - [x] 9.1 Mở rộng loader/eval path để trả materialized vs missing scenarios
     - _Requirements: REQ-INTG-007_
-  - [ ] 9.2 Mặc định fail-closed khi requested scenario không có samples
+  - [x] 9.2 Mặc định fail-closed khi requested scenario không có samples
     - _Requirements: REQ-INTG-007_
-  - [ ] 9.3 Nếu hỗ trợ permissive mode, output phải explicit missing scenarios
+  - [x] 9.3 Nếu hỗ trợ permissive mode, output phải explicit missing scenarios
     - _Requirements: REQ-INTG-007_
-  - [ ] 9.4 Viết integration tests cho multi-scenario eval coverage
+  - [x] 9.4 Viết integration tests cho multi-scenario eval coverage
     - _Requirements: REQ-INTG-007_
 
 - [ ] 10. Đồng bộ validator và runtime semantics

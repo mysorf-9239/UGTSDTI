@@ -261,6 +261,28 @@ def test_data_validator_version_mismatch_raises(tmp_path):
         )
 
 
+def test_data_loader_factory_rejects_requested_scenarios_with_zero_rows(tmp_path):
+    manifest = _build_partition_manifest(
+        tmp_path,
+        rows={
+            ("s1", "test"): [{"drug_id": "d1", "protein_id": "p1", "labels": 1.0, "scenario": "s1"}],
+            ("s4", "test"): [],
+        },
+    )
+    dataset_path = _write_dataset_version(tmp_path, record_count=1)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest.to_dict(), sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ProcessedSplitMismatchError, match="s4"):
+        DataLoaderFactory().build(
+            cfg=_cfg(),
+            dataset_version_path=dataset_path,
+            split_manifest_path=manifest_path,
+            scenarios=["s1", "s4"],
+            partition="test",
+        )
+
+
 def test_data_validator_nan_in_batch_raises():
     validator = DataValidator()
     with pytest.raises(BatchSchemaError, match="NaN/Inf"):
