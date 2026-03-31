@@ -93,6 +93,9 @@ def _canonicalize_config_for_hash(config: dict[str, Any]) -> dict[str, Any]:
     if isinstance(runtime, dict):
         for key in _RUNTIME_OPERATIONAL_HASH_FIELDS:
             runtime.pop(key, None)
+    data = canonical.get("data")
+    if isinstance(data, dict):
+        data.pop("source", None)
     normalized = _canonicalize_value(canonical)
     if isinstance(normalized, dict):
         return normalized

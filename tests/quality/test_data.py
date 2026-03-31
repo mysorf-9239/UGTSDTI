@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -12,9 +13,17 @@ from ugtsdti.core.errors import (
     InconsistentSplitError,
     MissingRawSnapshotError,
     ProcessedSplitMismatchError,
+    UGTSDTIError,
 )
 from ugtsdti.core.schema import BatchSpec
-from ugtsdti.data import DataLoaderFactory, DatasetVersion, DataSplitter, DataValidator, SplitManifest
+from ugtsdti.data import (
+    DataBootstrapOrchestrator,
+    DataLoaderFactory,
+    DatasetVersion,
+    DataSplitter,
+    DataValidator,
+    SplitManifest,
+)
 
 
 def _grid_records(drugs: int = 10, targets: int = 10) -> list[dict[str, object]]:
@@ -36,11 +45,16 @@ def _grid_records(drugs: int = 10, targets: int = 10) -> list[dict[str, object]]
 
 def _cfg() -> dict:
     return {
+        "data": {
+            "dataset": "davis",
+            "preprocessing_version": "v1",
+            "split_version": "v1",
+        },
         "graph": {
             "nodes": [
                 {"name": "student_encoder", "type_key": "encoder.baseline", "inputs": ["drug_seq", "protein_seq"]},
             ]
-        }
+        },
     }
 
 
@@ -55,6 +69,19 @@ def _write_dataset_version(tmp_path: Path, record_count: int) -> Path:
     dataset_path = tmp_path / "dataset_version.json"
     dataset_path.write_text(json.dumps(dataset_version.to_dict(), sort_keys=True), encoding="utf-8")
     return dataset_path
+
+
+def _write_bootstrap_csv(path: Path, drugs: int = 10, targets: int = 10) -> Path:
+    payload = ["drug_id,protein_id,Drug,Target,Y\n"]
+    for drug_index in range(drugs):
+        for target_index in range(targets):
+            label = 8.5 if (drug_index + target_index) % 2 == 0 else 5.0
+            payload.append(
+                f"d{drug_index},p{target_index},CCO{drug_index % 10},"
+                f"ACDEFGHIKLMNPQRSTVWY{target_index % 10},{label}\n"
+            )
+    path.write_text("".join(payload), encoding="utf-8")
+    return path
 
 
 def _read_rows(path: str) -> list[dict[str, object]]:
@@ -430,3 +457,91 @@ def test_dataset_version_supports_backward_compatible_raw_version_alias():
     assert version.raw_version == "raw-v1"
     assert version.to_dict()["dataset_version"] == "raw-v1"
     assert version.to_dict()["raw_version"] == "raw-v1"
+
+
+def test_bootstrap_csv_materializes_processed_and_split_artifacts(tmp_path):
+    raw_csv = _write_bootstrap_csv(tmp_path / "rows.csv")
+    cfg = _cfg()
+    cfg["data"]["source"] = {
+        "type": "csv",
+        "auto_prepare": True,
+        "raw_csv": str(raw_csv),
+        "label_threshold": 7.0,
+        "label_order": "ascending",
+        "drug_max_len": 8,
+        "protein_max_len": 8,
+    }
+
+    report = DataBootstrapOrchestrator().ensure_artifacts(cfg, data_root=tmp_path / "data")
+
+    assert report.prepared is True
+    assert Path(report.dataset_version_path).exists()
+    assert Path(report.split_manifest_path).exists()
+    dataset_payload = json.loads(Path(report.dataset_version_path).read_text(encoding="utf-8"))
+    assert dataset_payload["dataset"] == "davis"
+
+
+def test_bootstrap_artifacts_source_fails_closed_when_artifacts_are_missing(tmp_path):
+    cfg = _cfg()
+    cfg["data"]["source"] = {"type": "artifacts", "auto_prepare": False}
+
+    with pytest.raises(ProcessedSplitMismatchError, match="auto_prepare is disabled"):
+        DataBootstrapOrchestrator().ensure_artifacts(cfg, data_root=tmp_path / "data")
+
+
+def test_bootstrap_pytdc_requires_optional_dependency(tmp_path, monkeypatch):
+    original_import = __import__
+
+    def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):  # type: ignore[no-untyped-def]
+        if name == "tdc.multi_pred":
+            raise ImportError("tdc unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", _guarded_import)
+    cfg = _cfg()
+    cfg["data"]["source"] = {"type": "pytdc", "auto_prepare": True}
+
+    with pytest.raises(UGTSDTIError, match="PyTDC source requested"):
+        DataBootstrapOrchestrator().ensure_artifacts(cfg, data_root=tmp_path / "data")
+
+
+def test_bootstrap_pytdc_mocked_path_materializes_artifacts(tmp_path, monkeypatch):
+    class FakeDTI:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def get_data(self):  # type: ignore[no-untyped-def]
+            class _Frame:
+                def to_dict(self, orient: str = "records"):  # type: ignore[no-untyped-def]
+                    assert orient == "records"
+                    records: list[dict[str, object]] = []
+                    for drug_index in range(10):
+                        for target_index in range(10):
+                            label = 8.5 if (drug_index + target_index) % 2 == 0 else 5.0
+                            records.append(
+                                {
+                                    "Drug": f"CCO{drug_index % 10}",
+                                    "Target": f"ACDEFGHIKLMNPQRSTVWY{target_index % 10}",
+                                    "Y": label,
+                                    "drug_id": f"d{drug_index}",
+                                    "protein_id": f"p{target_index}",
+                                }
+                            )
+                    return records
+
+            return _Frame()
+
+    fake_multi_pred = ModuleType("tdc.multi_pred")
+    fake_multi_pred.DTI = FakeDTI
+    fake_tdc = ModuleType("tdc")
+    fake_tdc.multi_pred = fake_multi_pred
+    monkeypatch.setitem(__import__("sys").modules, "tdc", fake_tdc)
+    monkeypatch.setitem(__import__("sys").modules, "tdc.multi_pred", fake_multi_pred)
+
+    cfg = _cfg()
+    cfg["data"]["source"] = {"type": "pytdc", "auto_prepare": True, "tdc_name": "DAVIS"}
+
+    report = DataBootstrapOrchestrator().ensure_artifacts(cfg, data_root=tmp_path / "data")
+
+    assert report.prepared is True
+    assert Path(report.dataset_version_path).exists()

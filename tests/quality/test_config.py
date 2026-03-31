@@ -927,3 +927,24 @@ class TestDeepMerge:
         base = {"a": {"x": 1}}
         _deep_merge(base, {"a": {"x": 2}})
         assert base["a"]["x"] == 1
+
+
+class TestDataBootstrapConfig:
+    def test_data_source_defaults_are_normalized(self):
+        normalized = normalizer.normalize(_minimal_student_only_cfg()).to_dict()
+
+        assert normalized["data"]["source"]["type"] == "artifacts"
+        assert normalized["data"]["source"]["auto_prepare"] is False
+        assert normalized["data"]["source"]["raw_csv"] is None
+
+    def test_data_source_csv_requires_raw_csv(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["data"]["source"] = {"type": "csv", "auto_prepare": True}
+
+        assert_invalid(cfg, "raw_csv")
+
+    def test_data_source_pytdc_is_valid(self):
+        cfg = _minimal_student_only_cfg()
+        cfg["data"]["source"] = {"type": "pytdc", "auto_prepare": True, "tdc_name": "DAVIS"}
+
+        assert_valid(cfg)

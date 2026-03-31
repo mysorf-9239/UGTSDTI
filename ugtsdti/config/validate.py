@@ -126,6 +126,7 @@ class ConfigValidator:
         """Validate types and basic structure of each section."""
         self._check_version(cfg)
         self._check_graph_schema(cfg)
+        self._check_data_schema(cfg)
         self._check_roles_schema(cfg)
         self._check_interaction_schema(cfg)
         self._check_decision_schema(cfg)
@@ -183,6 +184,56 @@ class ConfigValidator:
                         stage="config_validate",
                         key=f"graph.nodes.{node_name}.output_attrs",
                     )
+
+    def _check_data_schema(self, cfg: dict[str, Any]) -> None:
+        data = cfg.get("data", {})
+        if not isinstance(data, dict):
+            raise InvalidConfigError(
+                "Config section 'data' must be a mapping.",
+                stage="config_validate",
+                key="data",
+            )
+        source = data.get("source", {})
+        if source in (None, {}):
+            return
+        if not isinstance(source, dict):
+            raise InvalidConfigError(
+                "Config 'data.source' must be a mapping.",
+                stage="config_validate",
+                key="data.source",
+            )
+        source_type = str(source.get("type", "artifacts")).lower()
+        if source_type not in {"artifacts", "csv", "pytdc"}:
+            raise InvalidConfigError(
+                f"Unsupported data.source.type {source_type!r}.",
+                stage="config_validate",
+                key="data.source.type",
+            )
+        if source_type == "csv" and not source.get("raw_csv"):
+            raise InvalidConfigError(
+                "data.source.raw_csv is required when data.source.type='csv'.",
+                stage="config_validate",
+                key="data.source.raw_csv",
+            )
+        label_order = str(source.get("label_order", "descending")).lower()
+        if label_order not in {"descending", "ascending"}:
+            raise InvalidConfigError(
+                "data.source.label_order must be 'descending' or 'ascending'.",
+                stage="config_validate",
+                key="data.source.label_order",
+            )
+        if int(source.get("drug_max_len", 64)) <= 0:
+            raise InvalidConfigError(
+                "data.source.drug_max_len must be > 0.",
+                stage="config_validate",
+                key="data.source.drug_max_len",
+            )
+        if int(source.get("protein_max_len", 512)) <= 0:
+            raise InvalidConfigError(
+                "data.source.protein_max_len must be > 0.",
+                stage="config_validate",
+                key="data.source.protein_max_len",
+            )
 
     def _check_roles_schema(self, cfg: dict[str, Any]) -> None:
         roles = cfg.get("roles", {})

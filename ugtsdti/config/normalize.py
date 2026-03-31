@@ -92,6 +92,17 @@ _DEFAULT_RUNTIME: dict[str, Any] = {
     "precision": "fp32",
 }
 
+_DEFAULT_DATA_SOURCE: dict[str, Any] = {
+    "type": "artifacts",
+    "auto_prepare": False,
+    "raw_csv": None,
+    "tdc_name": None,
+    "label_threshold": 7.0,
+    "label_order": "descending",
+    "drug_max_len": 64,
+    "protein_max_len": 512,
+}
+
 
 # ---------------------------------------------------------------------------
 # ConfigNormalizer
@@ -124,7 +135,7 @@ class ConfigNormalizer:
         experiment = self._normalize_experiment(cfg.get("experiment", {}))
         extends = self._normalize_extends(cfg.get("extends", []))
         sweep = dict(cfg.get("sweep", {}))
-        data = dict(cfg.get("data", {}))
+        data = self._normalize_data(cfg.get("data", {}))
         scenario = self._normalize_scenario(cfg.get("scenario", {}))
         modalities = self._normalize_modalities(cfg.get("modalities", {}))
         graph = self._normalize_graph(cfg.get("graph", {}))
@@ -166,6 +177,18 @@ class ConfigNormalizer:
         if not isinstance(raw, dict):
             return {}
         return dict(raw)
+
+    def _normalize_data(self, raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, dict):
+            return {"source": copy.deepcopy(_DEFAULT_DATA_SOURCE)}
+        result = copy.deepcopy(raw)
+        source = result.get("source", {})
+        if not isinstance(source, dict):
+            source = {}
+        result["source"] = {**_DEFAULT_DATA_SOURCE, **source}
+        result["source"]["type"] = str(result["source"].get("type", "artifacts")).lower()
+        result["source"]["label_order"] = str(result["source"].get("label_order", "descending")).lower()
+        return result
 
     def _normalize_extends(self, raw: Any) -> list[str]:
         if isinstance(raw, str):

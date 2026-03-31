@@ -11,7 +11,7 @@ if [[ ! -f "$CONFIG_PATH" ]]; then
   exit 1
 fi
 
-echo "[baseline-real] artifact-backed run; expects prepared processed/ and splits/ artifacts."
+echo "[baseline] config-driven run; train/eval stay artifact-backed and may bootstrap artifacts if data.source.auto_prepare=true."
 python -m ugtsdti validate "$CONFIG_PATH"
 
 TRAIN_LOG="$(mktemp)"
@@ -56,11 +56,12 @@ import sys
 from pathlib import Path
 
 import yaml
+from ugtsdti.config.loader import ConfigLoader
 
 config_path = Path(sys.argv[1])
 checkpoint_path = sys.argv[2]
 destination = Path(sys.argv[3])
-cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+cfg = ConfigLoader().load(config_path)
 cfg.setdefault("runtime", {})
 cfg["runtime"]["checkpoint_path"] = checkpoint_path
 destination.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")

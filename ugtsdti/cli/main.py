@@ -16,6 +16,7 @@ from ugtsdti.config.validate import ConfigValidator
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import UGTSDTIError
 from ugtsdti.data import DataLoaderFactory
+from ugtsdti.data.bootstrap import DataBootstrapOrchestrator
 from ugtsdti.graph.builder import GraphBuilder
 from ugtsdti.graph.planner import GraphPlanner
 from ugtsdti.interaction.registry import InteractionPlanner
@@ -174,6 +175,7 @@ def _call_handler(
 
 
 def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
+    bootstrap_report = _bootstrap_data(cfg)
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     context = _build_context(runtime_state, mode="train")
     train_scenario = str(runtime_cfg.get("scenario", {}).get("train", "s1"))
@@ -192,6 +194,8 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
     logger = _build_logger(cfg, logs_dir)
+    if bootstrap_report is not None:
+        logger.log_text("bootstrap", json.dumps(bootstrap_report.to_dict(), sort_keys=True))
     checkpoint_io = CheckpointIO()
     artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
     trainer = Trainer(
@@ -404,6 +408,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                     "best_checkpoint": best_checkpoint,
                     "best_metric_name": best_metric_name if best_metric_value is not None else None,
                     "best_metric_value": best_metric_value,
+                    "bootstrap": bootstrap_report.to_dict() if bootstrap_report is not None else None,
                     "checkpoint": last_checkpoint,
                     "command": args.command,
                     "epochs": int(loop_cfg["epochs"]),
@@ -424,6 +429,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
 
 
 def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
+    bootstrap_report = _bootstrap_data(cfg)
     runtime_cfg, executor, runtime_state = _prepare_runtime(cfg)
     eval_scenarios = list(runtime_cfg.get("scenario", {}).get("eval", []))
     batches, split_manifest = _load_batches(runtime_cfg, runtime_state, scenarios=eval_scenarios, partition="test")
@@ -433,6 +439,8 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identi
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
     logger = _build_logger(cfg, logs_dir)
+    if bootstrap_report is not None:
+        logger.log_text("bootstrap", json.dumps(bootstrap_report.to_dict(), sort_keys=True))
     artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
     evaluator = Evaluator(executor, logger=logger, artifact_writer=artifact_writer)
     try:
@@ -456,6 +464,7 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identi
                     "checkpoint": runtime_state.get("checkpoint_path"),
                     "logs_dir": str(logs_dir),
                     "metrics": _scalarize_metrics(summary),
+                    "bootstrap": bootstrap_report.to_dict() if bootstrap_report is not None else None,
                 },
                 sort_keys=True,
             )
@@ -468,6 +477,11 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identi
 def _run_sweep(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identity: Any) -> None:
     del cfg, identity
     stream.write(json.dumps({"command": args.command, "status": "ready"}, sort_keys=True) + "\n")
+
+
+def _bootstrap_data(cfg: dict[str, Any]) -> Any:
+    runtime_state = RuntimeAdapter().adapt(cfg)
+    return DataBootstrapOrchestrator().ensure_artifacts(cfg, data_root=runtime_state["data_dir"])
 
 
 def _prepare_runtime(cfg: dict[str, Any]) -> tuple[dict[str, Any], PipelineExecutor, dict[str, Any]]:

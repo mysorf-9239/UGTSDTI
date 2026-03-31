@@ -223,7 +223,7 @@ def test_baseline_real_profiles_fail_closed_when_required_artifacts_are_missing(
     buffer = io.StringIO()
 
     assert run_cli(["train", str(config_path)], stdout=buffer) == 1
-    assert "dataset_version.json" in buffer.getvalue() or "manifest.json" in buffer.getvalue()
+    assert "auto_prepare is disabled" in buffer.getvalue()
 
 
 def test_readme_references_existing_baseline_files():
@@ -237,7 +237,7 @@ def test_readme_references_existing_baseline_files():
         "configs/baseline_reference.yaml",
         "configs/profiles/baseline_local.yaml",
         "configs/profiles/baseline_kaggle.yaml",
-        "scripts/baseline_real.sh",
+        "scripts/baseline.sh",
         "scripts/prepare_baseline_artifacts.py",
         "examples/baseline.py",
     }

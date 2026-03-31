@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -95,6 +96,95 @@ def _write_partition_manifest(
         ),
         encoding="utf-8",
     )
+
+
+def _last_json_line(payload: str) -> dict[str, object]:
+    for line in reversed(payload.splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            decoded = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return decoded
+    return {}
+
+
+def _bucket(key: str, seed: int) -> int:
+    digest = hashlib.sha256(f"{seed}:{key}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % 100
+
+
+def _entity_partition(key: str, seed: int) -> str:
+    bucket = _bucket(key, seed)
+    if bucket < 70:
+        return "train"
+    if bucket < 85:
+        return "val"
+    return "test"
+
+
+def _pair_partition(drug_id: str, protein_id: str, seed: int) -> str:
+    bucket = _bucket(f"{drug_id}::{protein_id}", seed)
+    if bucket < 70:
+        return "train"
+    if bucket < 85:
+        return "val"
+    return "test"
+
+
+def _s4_eval_partition(drug_id: str, protein_id: str, seed: int) -> str:
+    return "val" if _bucket(f"{drug_id}::{protein_id}", seed) < 50 else "test"
+
+
+def _collect_ids(prefix: str, seed: int, partition: str, count: int) -> list[str]:
+    selected: list[str] = []
+    cursor = 0
+    while len(selected) < count:
+        candidate = f"{prefix}{cursor}"
+        if _entity_partition(candidate, seed) == partition:
+            selected.append(candidate)
+        cursor += 1
+    return selected
+
+
+def _write_bootstrap_csv(path: Path) -> Path:
+    header = "drug_id,protein_id,Drug,Target,Y\n"
+    payload: list[str] = [header]
+    train_drugs = _collect_ids("drug-train-", 7, "train", 4)
+    test_drugs = _collect_ids("drug-test-", 7, "test", 3)
+    train_targets = _collect_ids("target-train-", 8, "train", 4)
+    test_targets = _collect_ids("target-test-", 8, "test", 3)
+
+    rows: list[tuple[str, str]] = []
+    rows.extend(
+        (drug_id, protein_id)
+        for drug_id in train_drugs
+        for protein_id in train_targets
+        if _pair_partition(drug_id, protein_id, 9) == "train"
+    )
+    rows.extend(
+        (drug_id, protein_id)
+        for drug_id in train_drugs
+        for protein_id in train_targets
+        if _pair_partition(drug_id, protein_id, 9) == "test"
+    )
+    rows.extend((drug_id, train_targets[0]) for drug_id in test_drugs)
+    rows.extend((train_drugs[0], protein_id) for protein_id in test_targets)
+    rows.extend(
+        (drug_id, protein_id)
+        for drug_id in test_drugs
+        for protein_id in test_targets
+        if _s4_eval_partition(drug_id, protein_id, 10) == "test"
+    )
+
+    for index, (drug_id, protein_id) in enumerate(rows):
+        label = 8.5 if index % 2 == 0 else 5.0
+        payload.append(f"{drug_id},{protein_id},CCO{index % 10},ACDEFGHIKLMNPQRSTVWY{index % 10},{label}\n")
+    path.write_text("".join(payload), encoding="utf-8")
+    return path
 
 
 def test_cli_validate_invalid_config_fails_fast(tmp_path):
@@ -859,3 +949,96 @@ def test_cli_eval_fails_when_requested_scenario_has_no_materialized_rows(tmp_pat
 
     assert exit_code == 1
     assert "s4" in buffer.getvalue()
+
+
+def test_cli_train_bootstraps_csv_source_when_auto_prepare_is_enabled(tmp_path):
+    raw_csv = _write_bootstrap_csv(tmp_path / "rows.csv")
+    cfg = _baseline_reference_cfg()
+    cfg["data"]["source"] = {
+        "type": "csv",
+        "auto_prepare": True,
+        "raw_csv": str(raw_csv),
+        "label_threshold": 7.0,
+        "label_order": "descending",
+        "drug_max_len": 16,
+        "protein_max_len": 32,
+    }
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "seed": 7,
+    }
+    cfg["training"]["loop"]["epochs"] = 1
+    cfg["training"]["loop"]["summary_every_steps"] = 1
+    config_path = tmp_path / "bootstrap_train.yaml"
+    config_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    buffer = io.StringIO()
+
+    exit_code = run_cli(["train", str(config_path)], stdout=buffer)
+
+    assert exit_code == 0
+    summary = _last_json_line(buffer.getvalue())
+    assert summary["command"] == "train"
+    assert summary["bootstrap"]["prepared"] is True
+    assert Path(summary["bootstrap"]["dataset_version_path"]).exists()
+    assert Path(summary["bootstrap"]["split_manifest_path"]).exists()
+    assert Path(summary["checkpoint"]).exists()
+
+
+def test_cli_eval_can_bootstrap_csv_source_before_loading_checkpoint(tmp_path):
+    raw_csv = _write_bootstrap_csv(tmp_path / "rows.csv")
+    cfg = _baseline_reference_cfg()
+    cfg["data"]["source"] = {
+        "type": "csv",
+        "auto_prepare": True,
+        "raw_csv": str(raw_csv),
+        "label_threshold": 7.0,
+        "label_order": "descending",
+        "drug_max_len": 16,
+        "protein_max_len": 32,
+    }
+    cfg["runtime"] = {
+        "data_dir": str(tmp_path / "data"),
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "checkpoint_dir": str(tmp_path / "checkpoints"),
+        "seed": 7,
+    }
+    cfg["training"]["loop"]["epochs"] = 1
+    train_config = tmp_path / "bootstrap_eval_train.yaml"
+    train_config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    train_buffer = io.StringIO()
+
+    assert run_cli(["train", str(train_config)], stdout=train_buffer) == 0
+    train_summary = _last_json_line(train_buffer.getvalue())
+    checkpoint_path = Path(str(train_summary["best_checkpoint"]))
+    assert checkpoint_path.exists()
+
+    data_dir = Path(cfg["runtime"]["data_dir"])
+    processed_dir = data_dir / "processed"
+    splits_dir = data_dir / "splits"
+    assert processed_dir.exists()
+    assert splits_dir.exists()
+    for path in sorted(processed_dir.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            path.rmdir()
+    for path in sorted(splits_dir.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            path.rmdir()
+
+    eval_cfg = json.loads(json.dumps(cfg))
+    eval_cfg["runtime"]["checkpoint_path"] = str(checkpoint_path)
+    eval_config = tmp_path / "bootstrap_eval.yaml"
+    eval_config.write_text(yaml.safe_dump(eval_cfg, sort_keys=False), encoding="utf-8")
+    eval_buffer = io.StringIO()
+
+    assert run_cli(["eval", str(eval_config)], stdout=eval_buffer) == 0
+    eval_summary = _last_json_line(eval_buffer.getvalue())
+    assert eval_summary["command"] == "eval"
+    assert eval_summary["checkpoint"] == str(checkpoint_path)
+    assert eval_summary["bootstrap"]["prepared"] is True
+    assert "metrics.auroc" in eval_summary["metrics"]

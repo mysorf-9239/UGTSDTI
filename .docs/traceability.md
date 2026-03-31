@@ -82,7 +82,23 @@ Matrix này map baseline portability hardening sang config surface, implementati
 | `REQ-BP-002` Profiles extend baseline canonical config | `README.md` configuration section | `extends: ../baseline_reference.yaml` | `configs/profiles/baseline_*.yaml` | `tests/integration/test_baseline_portability.py` |
 | `REQ-BP-003` Artifact-backed runtime only | `README.md` data preparation section | `runtime.data_dir`, `data.preprocessing_version`, `data.split_version` | `ugtsdti/cli/main.py`, `ugtsdti/data/loader.py` | `tests/integration/test_baseline_portability.py`, existing CLI/data tests |
 | `REQ-BP-004` Baseline-facing data prep entrypoint | `README.md` data preparation section | script arguments | `scripts/prepare_baseline_artifacts.py`, `ugtsdti/data/{acquisition,preprocessing,splitting}.py` | script review + `tests/integration/test_baseline_portability.py` README drift coverage |
-| `REQ-BP-005` Smoke and real workflows are explicit | `README.md` quick start | `examples/baseline.py`, `scripts/baseline_real.sh` | `examples/baseline.py`, `scripts/baseline_real.sh` | `tests/integration/test_baseline_portability.py` |
+| `REQ-BP-005` Smoke and real workflows are explicit | `README.md` quick start | `examples/baseline.py`, `scripts/baseline.sh` | `examples/baseline.py`, `scripts/baseline.sh` | `tests/integration/test_baseline_portability.py` |
 | `REQ-BP-006` `wandb` remains optional | `README.md` wandb section | `logging.backend: wandb` override on baseline profiles | `ugtsdti/logging/wandb_logger.py` | `tests/integration/test_baseline_portability.py` |
 | `REQ-BP-007` Kaggle path semantics are first-class | `README.md` profile table | `runtime.data_dir`, `runtime.artifacts_dir`, `runtime.checkpoint_dir` | `configs/profiles/baseline_kaggle.yaml` | `tests/integration/test_baseline_portability.py`, `tests/integration/test_orchestration.py` |
 | `REQ-BP-008` README/config drift is checked | `README.md` | referenced baseline configs and scripts | `README.md` | `tests/integration/test_baseline_portability.py` |
+
+## Data Bootstrap Matrix
+
+Matrix này map `REQ-DB-*` của data bootstrap layer sang config surface, implementation, và tests đang cover.
+
+| Requirement | Design / Docs | Config Surface | Implementation | Validation |
+| --- | --- | --- | --- | --- |
+| `REQ-DB-001` Train/eval runtime stays artifact-backed | `.kiro/specs/ugtsdti-data-bootstrap/design.md` | `data.source.*`, `runtime.data_dir` | `ugtsdti/cli/main.py`, `ugtsdti/data/loader.py`, `ugtsdti/data/bootstrap.py` | `tests/integration/test_cli.py`, `tests/quality/test_data.py` |
+| `REQ-DB-002` Config-driven data source selection | `.kiro/specs/ugtsdti-data-bootstrap/requirements.md` | `data.source.type` | `ugtsdti/config/{normalize,validate}.py`, `ugtsdti/data/bootstrap.py` | `tests/quality/test_config.py`, `tests/quality/test_data.py` |
+| `REQ-DB-003` `auto_prepare` semantics | `.kiro/specs/ugtsdti-data-bootstrap/design.md` | `data.source.auto_prepare` | `ugtsdti/data/bootstrap.py`, `ugtsdti/cli/main.py` | `tests/quality/test_data.py`, `tests/integration/test_cli.py` |
+| `REQ-DB-004` Missing artifacts fail closed when prepare disabled | `.kiro/specs/ugtsdti-data-bootstrap/requirements.md` | `data.source.auto_prepare: false` | `ugtsdti/data/bootstrap.py` | `tests/quality/test_data.py`, `tests/integration/test_baseline_portability.py` |
+| `REQ-DB-005` CSV bootstrap path | `.kiro/specs/ugtsdti-data-bootstrap/design.md` | `data.source.type: csv`, `data.source.raw_csv` | `ugtsdti/data/bootstrap.py` | `tests/quality/test_data.py`, `tests/integration/test_cli.py` |
+| `REQ-DB-006` PyTDC bootstrap path remains optional | `.kiro/specs/ugtsdti-data-bootstrap/design.md` | `data.source.type: pytdc` | `ugtsdti/data/bootstrap.py` | `tests/quality/test_data.py` |
+| `REQ-DB-007` One-command baseline happy path | `README.md` real workflow section | `scripts/baseline.sh` + config | `scripts/baseline.sh`, `ugtsdti/cli/main.py` | local smoke run + `tests/integration/test_baseline_portability.py` |
+| `REQ-DB-008` Manual prep remains secondary utility | `README.md` data preparation section | `scripts/prepare_baseline_artifacts.py --config` | `scripts/prepare_baseline_artifacts.py` | script help smoke + README drift test |
+| `REQ-DB-009` Research-oriented hash semantics preserved | `.kiro/specs/ugtsdti-data-bootstrap/design.md` | bootstrap-only `data.source.*` excluded from hash | `ugtsdti/runtime/identity.py` | `tests/quality/test_runtime.py` |

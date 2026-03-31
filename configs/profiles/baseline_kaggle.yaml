@@ -6,6 +6,15 @@ data:
   dataset: davis
   preprocessing_version: v1
   split_version: v1
+  source:
+    type: artifacts
+    auto_prepare: false
+    raw_csv: null
+    tdc_name: DAVIS
+    label_threshold: 7.0
+    label_order: descending
+    drug_max_len: 64
+    protein_max_len: 512
 scenario:
   train: s1
   eval:

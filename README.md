@@ -84,33 +84,50 @@ This path creates a synthetic fixture and runs `validate -> train -> eval`. It i
 
 ### Real baseline workflow
 
-1. Prepare artifact-backed data once:
+There are two real-run modes:
+
+- `artifacts` mode: expect `processed/` and `splits/` artifacts to already exist
+- `csv` / `pytdc` mode: let the bootstrap layer materialize artifacts before `train -> eval`
+
+1. Validate the baseline config or profile:
 
 ```bash
 conda activate ugtsdti
 cd UGTSDTI
-python scripts/prepare_baseline_artifacts.py --source csv --dataset davis --raw-csv /path/to/davis.csv
-```
-
-Or, if `PyTDC` is installed in the environment:
-
-```bash
-python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
-```
-
-2. Validate a baseline profile:
-
-```bash
 python -m ugtsdti validate configs/profiles/baseline_local.yaml
 ```
 
-3. Train + evaluate with the selected checkpoint policy:
+2. Run the real baseline path:
 
 ```bash
-bash scripts/baseline_real.sh configs/profiles/baseline_local.yaml
+bash scripts/baseline.sh configs/profiles/baseline_local.yaml
 ```
 
-`baseline_real.sh` always runs `validate -> train -> eval` and injects the chosen checkpoint (`best` or `last`) into the eval run.
+This always runs `validate -> train -> eval`, and `eval` uses the selected checkpoint (`best` or `last`) from the preceding training run.
+
+3. If you want one-command bootstrap from CSV, derive a config from the local profile:
+
+```bash
+cat > baseline_csv.yaml <<'YAML'
+extends:
+  - configs/profiles/baseline_local.yaml
+data:
+  source:
+    type: csv
+    auto_prepare: true
+    raw_csv: /path/to/davis.csv
+    label_threshold: 7.0
+    label_order: descending
+YAML
+
+bash scripts/baseline.sh baseline_csv.yaml
+```
+
+4. Or prepare artifacts manually as a secondary utility:
+
+```bash
+python scripts/prepare_baseline_artifacts.py --config baseline_csv.yaml
+```
 
 ---
 
@@ -183,20 +200,20 @@ data/
       ...
 ```
 
-Prepare those artifacts before training:
+Prepare those artifacts manually only if you want a separate prep step:
 
 ```bash
-python scripts/prepare_baseline_artifacts.py --source csv --dataset davis --raw-csv /path/to/davis.csv
+python scripts/prepare_baseline_artifacts.py --config baseline_csv.yaml
 ```
 
-Or use `PyTDC` for one-time acquisition/prep:
+Or switch the same config to `data.source.type: pytdc`:
 
 ```bash
 pip install -e ".[acquisition]"
-python scripts/prepare_baseline_artifacts.py --source pytdc --dataset davis
+python scripts/prepare_baseline_artifacts.py --config baseline_csv.yaml
 ```
 
-`PyTDC` is used only for acquisition/prep. Training and evaluation still read only from materialized artifacts.
+The real baseline workflow still stays artifact-backed at runtime. `PyTDC` is used only during bootstrap or manual prep.
 
 ---
 
@@ -252,6 +269,29 @@ loss:
 
 Use `baseline_reference.yaml` as the source of truth; profiles only override environment/runtime settings.
 
+### `data.source`
+
+Bootstrap behavior is config-driven:
+
+```yaml
+data:
+  source:
+    type: artifacts  # artifacts | csv | pytdc
+    auto_prepare: false
+    raw_csv: null
+    tdc_name: DAVIS
+    label_threshold: 7.0
+    label_order: descending
+    drug_max_len: 64
+    protein_max_len: 512
+```
+
+- `artifacts`: require existing `processed/` + `splits/`
+- `csv`: bootstrap from a local CSV before training/eval
+- `pytdc`: bootstrap from PyTDC before training/eval
+
+`train` and `eval` themselves still consume only the materialized artifacts.
+
 ### `wandb`
 
 `wandb` remains optional. The framework degrades gracefully if it is unavailable.
@@ -261,7 +301,7 @@ To enable it:
 ```bash
 pip install -e ".[wandb]"
 python -m ugtsdti validate configs/profiles/baseline_local.yaml
-bash scripts/baseline_real.sh configs/profiles/baseline_local.yaml
+bash scripts/baseline.sh configs/profiles/baseline_local.yaml
 ```
 
 Then set `logging.backend: wandb` in a derived config file that `extends` `configs/profiles/baseline_local.yaml`, or patch a temporary copy before running.

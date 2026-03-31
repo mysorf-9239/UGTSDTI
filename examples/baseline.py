@@ -5,13 +5,18 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from ugtsdti.cli.main import run_cli
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from ugtsdti.cli.main import run_cli  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
