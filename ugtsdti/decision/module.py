@@ -31,7 +31,12 @@ class IdentityDecisionModule(DecisionModule):
                 component="IdentityDecisionModule",
                 key=self._source_key,
             )
-        return {"logits": state.get(self._source_key)}
+
+        # Validate input logits are finite before computation
+        logits = state.get(self._source_key)
+        _validate_input_logits(logits, key=self._source_key, component="IdentityDecisionModule")
+
+        return {"logits": logits}
 
 
 class SoftBlendingDecisionModule(DecisionModule):
@@ -58,6 +63,12 @@ class SoftBlendingDecisionModule(DecisionModule):
         if fallback_outputs is not None:
             return fallback_outputs
 
+        # Validate input logits are finite before computation
+        teacher_logits = state.get("teacher.logits")
+        student_logits = state.get("student.logits")
+        _validate_input_logits(teacher_logits, key="teacher.logits", component="SoftBlendingDecisionModule")
+        _validate_input_logits(student_logits, key="student.logits", component="SoftBlendingDecisionModule")
+
         try:
             trust_outputs = self._trust_estimator.estimate(state)
         except InvalidDecisionOutputError:
@@ -67,8 +78,8 @@ class SoftBlendingDecisionModule(DecisionModule):
             raise
 
         logits = self._policy.soft_blend(
-            state.get("teacher.logits"),
-            state.get("student.logits"),
+            teacher_logits,
+            student_logits,
             trust_outputs["gate.alpha"],
         )
         _validate_logits(logits, component="SoftBlendingDecisionModule")
@@ -101,6 +112,12 @@ class HardSelectionDecisionModule(DecisionModule):
         if fallback_outputs is not None:
             return fallback_outputs
 
+        # Validate input logits are finite before computation
+        teacher_logits = state.get("teacher.logits")
+        student_logits = state.get("student.logits")
+        _validate_input_logits(teacher_logits, key="teacher.logits", component="HardSelectionDecisionModule")
+        _validate_input_logits(student_logits, key="student.logits", component="HardSelectionDecisionModule")
+
         try:
             trust_outputs = self._trust_estimator.estimate(state)
         except InvalidDecisionOutputError:
@@ -110,8 +127,8 @@ class HardSelectionDecisionModule(DecisionModule):
             raise
 
         logits = self._policy.hard_select(
-            state.get("teacher.logits"),
-            state.get("student.logits"),
+            teacher_logits,
+            student_logits,
             trust_outputs["gate.alpha"],
             threshold=self._threshold,
         )
@@ -150,6 +167,7 @@ def _fallback_from_key(state: State, fallback_key: str, fallback: dict[str, str]
             key=source_key,
         )
     logits = state.get(source_key)
+    _validate_input_logits(logits, key=source_key, component="DecisionModule")
     _validate_logits(logits, component="DecisionModule")
     return {"logits": logits}
 
@@ -164,6 +182,22 @@ def _validate_logits(logits: Any, *, component: str) -> None:
                 stage="decision",
                 component=component,
                 key="logits",
+            )
+    except ImportError as exc:
+        raise RuntimeError("Advanced decision modules require torch.") from exc
+
+
+def _validate_input_logits(logits: Any, *, key: str, component: str) -> None:
+    """Validate input logits are finite before computation."""
+    try:
+        import torch
+
+        if isinstance(logits, torch.Tensor) and not torch.all(torch.isfinite(logits)):
+            raise InvalidDecisionOutputError(
+                f"Decision received non-finite logits (NaN/Inf) from {key!r}.",
+                stage="decision",
+                component=component,
+                key=key,
             )
     except ImportError as exc:
         raise RuntimeError("Advanced decision modules require torch.") from exc

@@ -77,8 +77,7 @@ def _write_bootstrap_csv(path: Path, drugs: int = 10, targets: int = 10) -> Path
         for target_index in range(targets):
             label = 8.5 if (drug_index + target_index) % 2 == 0 else 5.0
             payload.append(
-                f"d{drug_index},p{target_index},CCO{drug_index % 10},"
-                f"ACDEFGHIKLMNPQRSTVWY{target_index % 10},{label}\n"
+                f"d{drug_index},p{target_index},CCO{drug_index % 10},ACDEFGHIKLMNPQRSTVWY{target_index % 10},{label}\n"
             )
     path.write_text("".join(payload), encoding="utf-8")
     return path

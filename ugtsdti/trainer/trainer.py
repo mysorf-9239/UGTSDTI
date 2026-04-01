@@ -28,8 +28,7 @@ from ugtsdti.decision.trust import TrustEstimator
 from ugtsdti.graph.engine import GraphEngine, GraphTrace
 from ugtsdti.interaction.engine import InteractionEngine
 from ugtsdti.logging.base import Logger
-from ugtsdti.postprocess.loss import LossComposer
-from ugtsdti.postprocess.metrics import MetricsReporter
+from ugtsdti.postprocess.pipeline import run_postprocess
 from ugtsdti.roles.binder import RoleBinder, RoleBinding
 from ugtsdti.runtime.artifacts import ArtifactWriter
 from ugtsdti.runtime.checkpoint import CheckpointBundle, CheckpointIO
@@ -99,17 +98,31 @@ class PipelineExecutor:
         context: ExecutionContext,
     ) -> tuple[State, PipelineTrace]:
         state, writer, trace = self._run_core_pipeline(batch, cfg, context)
-        outputs: dict[str, Any] = {}
-        outputs.update(LossComposer().compose(cfg.get("loss", {}), state, batch["labels"]))
-        metrics_cfg = cfg.get("metrics", {})
-        if metrics_cfg:
-            outputs.update(MetricsReporter().report(metrics_cfg, state, batch["labels"]))
-        postprocess_outputs = {
-            key: value for key, value in outputs.items() if not (key.startswith("diagnostics.") and state.has(key))
-        }
-        writer.commit("postprocess", postprocess_outputs)
+
+        # Run postprocess pipeline
+        postprocess_cfg = cfg.get(
+            "postprocess",
+            {
+                "uncertainty": cfg.get("uncertainty", {}),
+                "decision": cfg.get("decision", {}),
+                "loss": cfg.get("loss", {}),
+                "metrics": cfg.get("metrics", {}),
+            },
+        )
+
+        # Update context (no labels in context)
+        context_with_labels = ExecutionContext(
+            mode=context.mode,
+            seed=context.seed,
+            device=context.device,
+            deterministic=context.deterministic,
+            precision=context.precision,
+        )
+
+        state = run_postprocess(state, postprocess_cfg, context_with_labels, batch["labels"])
         trace.stage_order.append("postprocess")
         trace.state_boundary_summaries["postprocess"] = state.keys()
+
         return state, trace
 
     def _run_core_pipeline(
@@ -136,12 +149,16 @@ class PipelineExecutor:
         RoleBinder(bindings).bind(state, writer)
         trace.state_boundary_summaries["role_binding"] = state.keys()
 
-        self._run_interactions(state, writer, cfg, context)
-        trace.state_boundary_summaries["interaction"] = state.keys()
+        # Skip interactions in new pipeline - handled by postprocess
+        if cfg.get("interaction_plan"):
+            self._run_interactions(state, writer, cfg, context)
+            trace.state_boundary_summaries["interaction"] = state.keys()
 
-        decision = self._build_decision_module(cfg)
-        writer.commit("decision", decision.forward(state, context))
-        trace.state_boundary_summaries["decision"] = state.keys()
+        # Skip decision in new pipeline - handled by postprocess
+        if not cfg.get("postprocess"):
+            decision = self._build_decision_module(cfg)
+            writer.commit("decision", decision.forward(state, context))
+            trace.state_boundary_summaries["decision"] = state.keys()
 
         return state, writer, trace
 

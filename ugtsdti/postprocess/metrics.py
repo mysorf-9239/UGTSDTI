@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import InvalidDecisionOutputError
-from ugtsdti.core.state import State
+from ugtsdti.core.state import State, StateWriter
 
 
 class MetricsReporter:
@@ -282,3 +283,18 @@ def _to_numpy(value: Any) -> Any:
     except ImportError:
         pass
     return value
+
+
+def run_metrics(state: State, cfg: dict[str, Any], context: ExecutionContext, labels: Any) -> State:
+    """Run metrics reporting on state."""
+    # Create metrics reporter
+    reporter = MetricsReporter()
+
+    # Run metrics
+    outputs = reporter.report(cfg, state, labels)
+
+    # Write outputs to state under metrics namespace
+    writer = StateWriter(state)
+    writer.commit("metrics", outputs)
+
+    return state

@@ -15,6 +15,91 @@ from typing import Any
 from ugtsdti.core.errors import KeyCollisionError
 
 
+def _stable_hash(value: Any) -> Any:
+    """Create a stable, hashable representation of any value.
+
+    EXACT implementation for correctness - no performance optimizations.
+    """
+    import hashlib
+
+    # Handle primitives directly
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+
+    # Handle torch.Tensor
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            # detach → cpu → contiguous
+            tensor = value.detach().cpu().contiguous()
+            # Hash FULL byte content using md5
+            tensor_bytes = tensor.numpy().tobytes()
+            md5_hash = hashlib.md5(tensor_bytes).hexdigest()
+            # Include: ("tensor", shape, dtype, md5(bytes))
+            return ("tensor", tuple(tensor.shape), str(tensor.dtype), md5_hash)
+    except ImportError:
+        pass
+
+    # Handle numpy.ndarray
+    try:
+        import numpy as np
+
+        if isinstance(value, np.ndarray):
+            # contiguous
+            if not value.flags.contiguous:
+                value = value.copy()
+            # md5(bytes)
+            array_bytes = value.tobytes()
+            md5_hash = hashlib.md5(array_bytes).hexdigest()
+            # Include shape + dtype
+            return ("numpy", tuple(value.shape), str(value.dtype), md5_hash)
+    except ImportError:
+        pass
+
+    # Handle dict
+    if isinstance(value, dict):
+        # sorted by key
+        sorted_items = []
+        for key in sorted(value.keys(), key=str):
+            sorted_items.append((key, _stable_hash(value[key])))
+        return ("dict", tuple(sorted_items))
+
+    # Handle list / tuple
+    if isinstance(value, (list, tuple)):
+        # recursive hash
+        return ("list", tuple(_stable_hash(item) for item in value))
+
+    # Handle set
+    if isinstance(value, set):
+        # sorted hash values
+        sorted_hashes = sorted(str(_stable_hash(item)) for item in value)
+        return ("set", tuple(sorted_hashes))
+
+    # Fallback for other objects
+    try:
+        return ("object", type(value).__name__, str(value))
+    except Exception:
+        return ("object", type(value).__name__, "<unrepresentable>")
+
+
+def _compute_fingerprint_from_store(store: dict[str, Any]) -> str:
+    """Compute fingerprint from store using EXACT specification."""
+    import hashlib
+
+    # Iterate sorted(store.items())
+    stable_items = []
+    for key in sorted(store.keys()):
+        # For each (k, v) → (k, stable_hash(v))
+        stable_items.append((key, _stable_hash(store[key])))
+
+    # Build tuple
+    stable_tuple = tuple(stable_items)
+
+    # fingerprint = md5(repr(tuple).encode())
+    return hashlib.md5(repr(stable_tuple).encode()).hexdigest()
+
+
 class State:
     """Read-only public surface for pipeline stages.
 
@@ -24,24 +109,42 @@ class State:
 
     def __init__(self) -> None:
         self._store: dict[str, Any] = {}
+        self._fingerprint: str = self._compute_fingerprint()
+
+    def _compute_fingerprint(self) -> str:
+        """Compute a stable hash fingerprint of the current state."""
+        return _compute_fingerprint_from_store(self._store)
+
+    def get_fingerprint(self) -> str:
+        """Get the current fingerprint of the state."""
+        # Always compute fresh fingerprint to detect mutations
+        return self._compute_fingerprint()
+
+    def _update_fingerprint(self) -> None:
+        """Update the fingerprint after legitimate state changes."""
+        self._fingerprint = self._compute_fingerprint()
 
     # ------------------------------------------------------------------
     # Public read surface
     # ------------------------------------------------------------------
 
     def get(self, key: str) -> Any:
-        """Return the value for *key*.
+        """Return an isolated copy of the value for *key*.
+
+        ALWAYS isolates to ensure complete safety and prevent reference leaks.
 
         Raises KeyError if the key has not been committed yet.
         """
-        value = self._store[key]
-        if _should_isolate_on_read(key):
-            return _isolate_value(value)
-        return value
+        if key not in self._store:
+            raise KeyError(key)
+        return _isolate_value(self._store[key])
 
     def get_isolated(self, key: str) -> Any:
-        """Return an isolated copy of the committed value for *key*."""
-        return _isolate_value(self._store[key])
+        """Return an isolated copy of the committed value for *key*.
+
+        NOTE: This method is now redundant with get() but kept for backward compatibility.
+        """
+        return self.get(key)  # Same as get() now
 
     def has(self, key: str) -> bool:
         """Return True if *key* has been committed to this State."""
@@ -62,6 +165,14 @@ class State:
     def snapshot_isolated(self) -> dict[str, Any]:
         """Return a per-key isolated snapshot for boundary-safe inspection."""
         return {key: self.get(key) for key in self.keys()}
+
+    def _internal_store(self) -> dict[str, Any]:
+        """Internal access to storage for StateWriter only.
+
+        This method is deliberately named with underscore to indicate
+        it's for internal use by trusted components only.
+        """
+        return self._store
 
 
 class StateWriter:
@@ -106,17 +217,28 @@ class StateWriter:
                 )
 
         for key, value in outputs.items():
-            self._state._store[key] = _isolate_value(value)
+            self._state._internal_store()[key] = _isolate_value(value)
             self._producers[key] = producer
+
+        # Update fingerprint after successful commit
+        self._state._update_fingerprint()
 
 
 def _isolate_value(value: Any) -> Any:
-    """Detach or copy mutable values at commit time to reduce silent mutation."""
+    """Detach or copy mutable values at commit time to reduce silent mutation.
+
+    Ensures complete isolation:
+    - Tensors: detach() + clone() to break grad graph and shared memory
+    - Arrays: copy() to break shared memory
+    - Collections: deep copy with recursive isolation
+    """
     try:
         import torch
 
         if isinstance(value, torch.Tensor):
-            return value.clone()
+            # Detach from computation graph AND clone to break shared memory
+            # This ensures no gradient leakage and complete isolation
+            return value.detach().clone()
     except ImportError:
         pass
 

@@ -15,6 +15,7 @@ from ugtsdti.core.errors import (
     NumericalInstabilityError,
 )
 from ugtsdti.core.schema import validate_graph_key
+from ugtsdti.core.seed import set_global_seed
 from ugtsdti.core.state import State, StateWriter
 from ugtsdti.graph.registry import NodeRegistry
 from ugtsdti.graph.specs import GraphPlan
@@ -124,12 +125,23 @@ class GraphEngine:
         Returns:
             GraphTrace (empty events list when debug=False).
         """
+        # Initialize global seed for deterministic behavior
+        if hasattr(context, "seed") and context.seed is not None:
+            set_global_seed(context.seed)
+
         trace = GraphTrace(node_order=list(plan.order))
         defn_map = plan.definition_map()
 
         for node_name in plan.order:
             defn = defn_map[node_name]
             spec = self._registry.get_spec(defn.type_key)
+
+            # (A) BEFORE node execution
+            if state.get_fingerprint() != state._fingerprint:
+                raise RuntimeError("External mutation BEFORE node")
+
+            # Store fingerprint before node execution
+            state.get_fingerprint()
 
             # 1. Materialize declared inputs (shallow — no full State copy)
             inputs = self._materialize_inputs(node_name, defn.inputs, state)
@@ -153,8 +165,17 @@ class GraphEngine:
                     _check_numerical_safety(key, value, node_name)
                 qualified[key] = value
 
-            # 6. Commit via StateWriter
+            # (B) AFTER node execution (BEFORE commit)
+            fp_before = state._fingerprint
+            fp_after = state.get_fingerprint()
+            if fp_before != fp_after:
+                raise RuntimeError("Illegal mutation INSIDE node")
+
+            # 6. Commit via StateWriter (this is the ONLY allowed state change)
             writer.commit(node_name, qualified)
+
+            # (C) AFTER commit
+            assert state.get_fingerprint() == state._fingerprint
 
             # 7. Emit trace event if debug mode
             if self._debug:

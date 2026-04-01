@@ -1,4 +1,4 @@
-"""Uncertainty estimation interaction modules."""
+"""Uncertainty estimation modules for post-process pipeline."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Any
 
 from ugtsdti.core.context import ExecutionContext
 from ugtsdti.core.errors import InvalidInteractionGraphError
+from ugtsdti.core.state import State, StateWriter
 from ugtsdti.interaction.base import InteractionRuntime
 
 
@@ -20,7 +21,7 @@ def _validate_input_logits(logits: Any, *, key: str, component: str) -> None:
         if tensor.numel() == 0:
             raise InvalidInteractionGraphError(
                 "Empty tensor in uncertainty estimation.",
-                stage="interaction",
+                stage="postprocess",
                 component=component,
                 key=key,
             )
@@ -29,7 +30,7 @@ def _validate_input_logits(logits: Any, *, key: str, component: str) -> None:
         if not torch.all(torch.isfinite(tensor)):
             raise InvalidInteractionGraphError(
                 "Uncertainty received non-finite logits.",
-                stage="interaction",
+                stage="postprocess",
                 component=component,
                 key=key,
             )
@@ -107,7 +108,7 @@ class SampleVarianceUncertaintyInteraction(_BaseUncertaintyInteraction):
             if tensor.ndim < 3:
                 raise InvalidInteractionGraphError(
                     "uncertainty.sample_variance requires sampled logits with an explicit sample dimension.",
-                    stage="interaction",
+                    stage="postprocess",
                     component="SampleVarianceUncertaintyInteraction",
                     key="logits",
                 )
@@ -135,3 +136,31 @@ class ConfidenceProxyUncertaintyInteraction(_BaseUncertaintyInteraction):
 
 class UncertaintyInteraction(ConfidenceProxyUncertaintyInteraction):
     """Backward-compatible alias for the confidence-proxy uncertainty path."""
+
+
+def run_uncertainty(state: State, cfg: dict[str, Any]) -> State:
+    """Run uncertainty estimation on state."""
+    context = ExecutionContext(mode="eval", seed=42, device="cpu", deterministic=False)
+
+    # Create uncertainty interaction
+    uncertainty = UncertaintyInteraction(
+        enabled=cfg.get("enabled", True),
+        targets=cfg.get("targets", {"teacher": True, "student": True}),
+        sample_dim=cfg.get("sample_dim", 0),
+    )
+
+    # Prepare inputs from state
+    inputs = {}
+    if state.has("teacher.logits"):
+        inputs["teacher.logits"] = state.get("teacher.logits")
+    if state.has("student.logits"):
+        inputs["student.logits"] = state.get("student.logits")
+
+    # Run uncertainty estimation
+    outputs = uncertainty.forward(inputs, context)
+
+    # Write outputs to state
+    writer = StateWriter(state)
+    writer.commit("uncertainty", outputs)
+
+    return state

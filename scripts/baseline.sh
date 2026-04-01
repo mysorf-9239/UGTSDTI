@@ -24,7 +24,7 @@ trap cleanup EXIT
 python -m ugtsdti train "$CONFIG_PATH" | tee "$TRAIN_LOG"
 
 CHECKPOINT_PATH="$(
-python - "$TRAIN_LOG" <<'PY'
+python - "$TRAIN_LOG" <<'PY'viếtđi
 import json
 import sys
 from pathlib import Path

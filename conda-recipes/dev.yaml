@@ -22,13 +22,13 @@ dependencies:
 
   # Pip-only packages
   - pip:
-    - torch>=2.0.0
-    - torch_geometric>=2.3
-    - transformers>=4.30
-    - rdkit>=2023.3
-    - loguru>=0.7
-    - hypothesis>=6.80
-    - ruff>=0.1.6
-    - mypy>=1.5
-    - pre-commit>=3.4
-    - -e ".[dev]"
+      - torch>=2.0.0
+      - torch_geometric>=2.3
+      - transformers>=4.30
+      - rdkit>=2023.3
+      - loguru>=0.7
+      - hypothesis>=6.80
+      - ruff>=0.1.6
+      - mypy>=1.5
+      - pre-commit>=3.4
+      - -e "..[dev]"

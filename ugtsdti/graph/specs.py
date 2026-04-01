@@ -45,6 +45,7 @@ class NodeDefinition:
     type_key: str
     inputs: list[str] = field(default_factory=list)
     params: dict[str, Any] = field(default_factory=dict)
+    _config_order: int = -1
 
 
 @dataclass

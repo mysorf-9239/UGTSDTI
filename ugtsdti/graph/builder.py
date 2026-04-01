@@ -66,7 +66,9 @@ class GraphBuilder:
         # --- 1. Parse NodeDefinitions ----------------------------------------
         definitions: list[NodeDefinition] = []
         seen_names: set[str] = set()
-        for raw in raw_nodes:
+        # Store config order for deterministic tie-breaking
+        config_order: dict[str, int] = {}
+        for idx, raw in enumerate(raw_nodes):
             name = raw.get("name", "")
             if not name:
                 raise InvalidConfigError(
@@ -82,6 +84,8 @@ class GraphBuilder:
                     key=name,
                 )
             seen_names.add(name)
+            # Store config order for deterministic tie-breaking
+            config_order[name] = idx
             type_key = raw.get("type_key", raw.get("type", ""))
             if not type_key:
                 raise InvalidConfigError(
@@ -90,14 +94,15 @@ class GraphBuilder:
                     component="GraphBuilder",
                     key=name,
                 )
-            definitions.append(
-                NodeDefinition(
-                    name=name,
-                    type_key=type_key,
-                    inputs=list(raw.get("inputs", [])),
-                    params=dict(raw.get("params", {})),
-                )
+            defn = NodeDefinition(
+                name=name,
+                type_key=type_key,
+                inputs=list(raw.get("inputs", [])),
+                params=dict(raw.get("params", {})),
             )
+            # Store config order as a separate mapping for deterministic tie-breaking
+            defn._config_order = idx
+            definitions.append(defn)
 
         # --- 2. Resolve output keys and build producer map -------------------
         produced_keys: dict[str, list[str]] = {}  # node_name -> [state_key, ...]
