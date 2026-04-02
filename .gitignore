@@ -71,18 +71,16 @@ venv.bak/
 
 # Project specific
 outputs/
-wandb/
 artifacts/
-data/raw/
 data/processed/
-data/splits/
-data/*.tab
 data/cache/
 configs/sweep_outputs/
 
-# Experiment artifacts (gitignore but keep structure)
-artifacts/
+# Experiment artifacts & checkpoints
+checkpoints/
 
-*/.DS_store/
+# macOS
+.DS_Store
+**/.DS_Store
 
 uv.lock

@@ -1,0 +1,339 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.20
+    cli_version: 0.25.1
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1775106143
+    t:
+      1:
+      - 1
+      2:
+      - 1
+      - 5
+      - 53
+      3:
+      - 2
+      - 4
+      - 13
+      - 16
+      - 42
+      - 61
+      - 62
+      4: 3.10.20
+      5: 0.25.1
+      13: darwin-arm64
+    e:
+      sghprgxmf3cbp94xcafbmxww664szhab:
+        os: macOS-26.3.1-arm64-arm-64bit
+        python: CPython 3.10.20
+        started_at: '2026-04-02T05:02:23.265790Z'
+        args:
+        - train
+        - /tmp/flow1_1000ep.yaml
+        program: -m ugtsdti.__main__
+        git:
+          remote_url: git@github.com:mysorf-9239/UGTSDTI.git
+          commit: 00ab6cf75d85d3c9c488b970029c64fd3cd0b693
+        root: /Users/mysorf/PythonProject/Bioinformatics/UGTSDTI
+        host: Nguyens-MacBook-Pro.local
+        executable: /Users/mysorf/miniconda3/envs/ugtsdti/bin/python
+        cpu_count: 8
+        cpu_count_logical: 8
+        disk:
+          /:
+            total: '245107195904'
+            used: '200121249792'
+        memory:
+          total: '17179869184'
+        apple: {}
+        writer_id: sghprgxmf3cbp94xcafbmxww664szhab
+version:
+  desc: null
+  value: v1
+experiment:
+  desc: null
+  value:
+    name: ugtsdti-flow1
+extends:
+  desc: null
+  value: []
+sweep:
+  desc: null
+  value: {}
+data:
+  desc: null
+  value:
+    dataset: davis
+    preprocessing_version: v1
+    split_version: v1
+    source:
+      type: artifacts
+      auto_prepare: false
+      raw_csv: null
+      tdc_name: null
+      label_threshold: 7.0
+      label_order: descending
+      drug_max_len: 64
+      protein_max_len: 512
+scenario:
+  desc: null
+  value:
+    train: s1
+    eval:
+    - s1
+modalities:
+  desc: null
+  value:
+    available:
+    - sequence
+    - structure
+    teacher:
+      uses:
+      - sequence
+      - structure
+    student:
+      uses:
+      - sequence
+graph:
+  desc: null
+  value:
+    nodes:
+    - name: t_drug_enc
+      inputs:
+      - drug_seq
+      output_attrs:
+      - embedding
+      params:
+        vocab_size: 64
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+      type_key: encoder.seq_bilstm
+    - name: t_prot_enc
+      inputs:
+      - protein_seq
+      output_attrs:
+      - embedding
+      params:
+        vocab_size: 32
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+      type_key: encoder.seq_bilstm
+    - name: t_graph_enc
+      inputs:
+      - drug_graph
+      output_attrs:
+      - embedding
+      params:
+        node_feat_dim: 9
+        hidden_dim: 64
+        proj_dim: 64
+        normalize_adj: true
+        allow_missing_input: true
+      type_key: encoder.gnn_drug
+    - name: teacher_fusion
+      inputs:
+      - t_drug_enc.embedding
+      - t_prot_enc.embedding
+      - t_graph_enc.embedding
+      output_attrs:
+      - embedding
+      params:
+        project_dim: 128
+      type_key: fusion.concat
+    - name: teacher_head
+      inputs:
+      - teacher_fusion.embedding
+      output_attrs:
+      - logits
+      params:
+        hidden_dim: 64
+        output_dim: 1
+      type_key: head.dense
+    - name: s_drug_enc
+      inputs:
+      - drug_seq
+      output_attrs:
+      - embedding
+      params:
+        vocab_size: 64
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+      type_key: encoder.seq_bilstm
+    - name: s_prot_enc
+      inputs:
+      - protein_seq
+      output_attrs:
+      - embedding
+      params:
+        vocab_size: 32
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+      type_key: encoder.seq_bilstm
+    - name: student_fusion
+      inputs:
+      - s_drug_enc.embedding
+      - s_prot_enc.embedding
+      output_attrs:
+      - embedding
+      params:
+        project_dim: 128
+      type_key: fusion.concat
+    - name: student_head
+      inputs:
+      - student_fusion.embedding
+      output_attrs:
+      - logits
+      params:
+        hidden_dim: 64
+        output_dim: 1
+      type_key: head.dense
+roles:
+  desc: null
+  value:
+    student:
+      outputs:
+      - student_head.logits
+      aggregation: first
+    teacher:
+      outputs:
+      - teacher_head.logits
+      aggregation: first
+interaction:
+  desc: null
+  value:
+    order:
+    - kd
+    - uncertainty
+    dependencies: {}
+    kd:
+      type: kd.standard
+      inputs:
+      - teacher.logits
+      - student.logits
+      params:
+        enabled: true
+        mode: logits
+        temperature: 4.0
+    uncertainty:
+      type: uncertainty.confidence_proxy
+      inputs:
+      - teacher.logits
+      - student.logits
+      params:
+        enabled: true
+        targets:
+          teacher: true
+          student: true
+decision:
+  desc: null
+  value:
+    type: gate.uncertainty
+    mode: heuristic
+    strategy: soft
+    use_uncertainty: true
+    fallback:
+      no_teacher: student
+      no_student: teacher
+    inputs:
+    - teacher.logits
+    - student.logits
+    - student.var
+training:
+  desc: null
+  value:
+    teacher:
+      freeze: false
+    student:
+      freeze: false
+    kd:
+      schedule: warmup
+      warmup_steps: 100
+      lambda_max: 0.5
+    gate:
+      trainable: false
+    optimizer:
+      type: adam
+      lr: 0.001
+      weight_decay: 0.0001
+    scheduler:
+      type: plateau
+      mode: max
+      factor: 0.5
+      patience: 3
+    loop:
+      epochs: 1000
+      checkpoint_every_epochs: 100
+      summary_every_steps: 1
+      eval_every_epochs: 10
+      eval_partition: test
+      max_grad_norm: 5.0
+      fail_on_nonfinite_loss: true
+      fail_on_nonfinite_grad: true
+      select_checkpoint: best
+      best_metric: metrics.auroc
+      best_mode: max
+      early_stopping:
+        enabled: false
+loss:
+  desc: null
+  value:
+    type: composite
+    hard_weight: 1.0
+    map:
+      kd:
+        from: interaction.kd.loss_component
+        weight: 0.5
+metrics:
+  desc: null
+  value:
+    primary: auroc
+    enabled:
+    - auprc
+    - auroc
+    by_scenario: true
+diagnostics:
+  desc: null
+  value:
+    disagreement: true
+    gate_alpha: true
+    uncertainty_error: true
+logging:
+  desc: null
+  value:
+    backend: wandb
+    trace_execution: false
+    inspect_state: false
+    wandb_mode: offline
+runtime:
+  desc: null
+  value:
+    device: cpu
+    seed: 42
+    deterministic: true
+    precision: fp32
+    data_dir: data
+    artifacts_dir: artifacts/flow1_1000ep
+    checkpoint_dir: checkpoints/flow1_1000ep
+    batch_size: 16
+    num_workers: 0

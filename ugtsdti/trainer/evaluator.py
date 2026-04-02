@@ -46,6 +46,7 @@ class Evaluator:
         cfg: dict[str, Any],
         context: ExecutionContext,
         *,
+        step: int | None = None,
         identity: ExperimentIdentity | dict[str, Any] | None = None,
         normalized_config: dict[str, Any] | None = None,
         split_manifest: dict[str, Any] | None = None,
@@ -91,7 +92,7 @@ class Evaluator:
             "state_boundary_summaries": aggregate_state_boundaries,
         }
         if self._logger is not None:
-            self._logger.log_metrics(_collect_scalar_metrics_from_dict(metrics), step=0)
+            self._logger.log_metrics(_collect_scalar_metrics_from_dict(metrics), step=step)
         if self._artifact_writer is not None and identity is not None and normalized_config is not None and traces:
             self._artifact_writer.write_bundle(
                 identity=_identity_dict(identity),

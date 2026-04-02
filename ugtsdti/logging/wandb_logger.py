@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from ugtsdti.logging.base import Logger
 
@@ -10,7 +10,15 @@ from ugtsdti.logging.base import Logger
 class WandbLogger(Logger):
     """Thin adapter around wandb that degrades gracefully when unavailable."""
 
-    def __init__(self, *, project: str, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        enabled: bool = True,
+        run_name: str | None = None,
+        config: dict[str, Any] | None = None,
+        mode: Literal["online", "offline", "disabled", "shared"] = "online",
+    ) -> None:
         self._enabled = enabled
         self._run = None
         if not enabled:
@@ -18,7 +26,12 @@ class WandbLogger(Logger):
         try:
             import wandb
 
-            self._run = wandb.init(project=project, mode="offline")
+            self._run = wandb.init(
+                project=project,
+                name=run_name,
+                config=config,
+                mode=mode,
+            )
         except Exception:
             self._enabled = False
             self._run = None

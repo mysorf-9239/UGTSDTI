@@ -14,7 +14,7 @@ data:
 
 scenario:
   train: s1
-  eval: [s1, s2, s3, s4]
+  eval: [s1]
 
 modalities:
   available: [sequence, structure]

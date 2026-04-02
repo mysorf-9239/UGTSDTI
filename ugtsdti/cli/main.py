@@ -193,7 +193,7 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
     runtime_identity = _materialize_runtime_identity(identity, runtime_cfg, runtime_state, split_manifest)
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
-    logger = _build_logger(cfg, logs_dir)
+    logger = _build_logger(cfg, logs_dir, run_id=runtime_identity["run_id"])
     if bootstrap_report is not None:
         logger.log_text("bootstrap", json.dumps(bootstrap_report.to_dict(), sort_keys=True))
     checkpoint_io = CheckpointIO()
@@ -294,14 +294,12 @@ def _run_train(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, ident
                     eval_batches,
                     runtime_cfg,
                     _build_context(runtime_state, mode="eval"),
+                    step=global_step,
                 )
                 last_eval_metrics = {
                     key: value for key, value in eval_result.metrics.items() if key.startswith("metrics.")
                 }
-                logger.log_metrics(
-                    _scalarize_metrics(last_eval_metrics),
-                    step=global_step,
-                )
+                # NOTE: logging is handled inside Evaluator.evaluate — no duplicate log here
                 stream.write(
                     json.dumps(
                         {
@@ -438,7 +436,7 @@ def _run_eval(cfg: dict[str, Any], args: argparse.Namespace, stream: Any, identi
     context = _build_context(runtime_state, mode="eval")
     logs_dir = _logs_dir(runtime_state, runtime_identity["run_id"])
     _write_identity_log(logs_dir, runtime_identity)
-    logger = _build_logger(cfg, logs_dir)
+    logger = _build_logger(cfg, logs_dir, run_id=runtime_identity["run_id"])
     if bootstrap_report is not None:
         logger.log_text("bootstrap", json.dumps(bootstrap_report.to_dict(), sort_keys=True))
     artifact_writer = ArtifactWriter(runtime_state["artifacts_dir"])
@@ -554,13 +552,25 @@ def _write_identity_log(logs_dir: Path, identity: dict[str, Any]) -> None:
     (logs_dir / "identity.json").write_text(json.dumps(identity, sort_keys=True, indent=2), encoding="utf-8")
 
 
-def _build_logger(cfg: dict[str, Any], logs_dir: Path) -> CompositeLogger:
+def _build_logger(cfg: dict[str, Any], logs_dir: Path, *, run_id: str | None = None) -> CompositeLogger:
     logging_cfg = dict(cfg.get("logging", {}))
     backend = str(logging_cfg.get("backend", "file")).lower()
     loggers: list[Logger] = [FileLogger(logs_dir)]
     if backend == "wandb":
-        project = str(cfg.get("experiment", {}).get("name", "ugtsdti"))
-        loggers.append(WandbLogger(project=project, enabled=True))
+        project = str(logging_cfg.get("wandb_project") or cfg.get("experiment", {}).get("name", "ugtsdti"))
+        raw_mode = str(logging_cfg.get("wandb_mode", "online")).lower()
+        wandb_mode: Literal["online", "offline", "disabled", "shared"] = (
+            raw_mode if raw_mode in ("online", "offline", "disabled", "shared") else "online"  # type: ignore[assignment]
+        )
+        loggers.append(
+            WandbLogger(
+                project=project,
+                enabled=True,
+                run_name=run_id,
+                config=cfg,
+                mode=wandb_mode,
+            )
+        )
     return CompositeLogger(loggers)
 
 
@@ -661,7 +671,7 @@ def _load_batches(
     dataset_version_path = data_root / "processed" / dataset / preprocessing_version / "dataset_version.json"
     split_manifest_path = data_root / "splits" / dataset / preprocessing_version / split_version / "manifest.json"
     batch_size = int(runtime_state.get("batch_size", 32))
-    raw_batches, _, dataset_version, manifest = DataLoaderFactory().build(
+    records, _, dataset_version, manifest = DataLoaderFactory().build(
         cfg=cfg,
         dataset_version_path=dataset_version_path,
         split_manifest_path=split_manifest_path,
@@ -670,7 +680,11 @@ def _load_batches(
         partition=partition,
         allow_missing_scenarios=allow_missing_scenarios,
     )
-    batches = [_tensorize_batch(batch) for batch in raw_batches]
+    batches = [
+        _tensorize_batch(_collate_records(records[i : i + batch_size]))
+        for i in range(0, max(len(records), 1), batch_size)
+        if records[i : i + batch_size]
+    ]
     if not batches and not allow_empty:
         raise UGTSDTIError(
             "No materialized rows were loaded for the requested scenarios.",
@@ -833,6 +847,16 @@ def _scalarize_metrics(metrics: dict[str, Any]) -> dict[str, float]:
     return scalarized
 
 
+def _collate_records(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collate a list of individual records into a single batch dict."""
+    if not rows:
+        return {}
+    batch: dict[str, Any] = {}
+    for key in rows[0]:
+        batch[key] = [row.get(key) for row in rows]
+    return batch
+
+
 def _tensorize_batch(batch: dict[str, Any]) -> dict[str, Any]:
     try:
         import torch
@@ -848,8 +872,39 @@ def _tensorize_batch(batch: dict[str, Any]) -> dict[str, Any]:
             tensor = torch.as_tensor(value, dtype=torch.float32)
             converted[key] = tensor.reshape(-1, 1)
             continue
+        if key == "drug_graph":
+            converted[key] = _tensorize_drug_graph(value, torch)
+            continue
         converted[key] = _maybe_tensorize_value(value, torch)
     return converted
+
+
+def _tensorize_drug_graph(value: Any, torch_module: Any) -> Any:
+    """Collate a list of drug_graph dicts into batched tensors.
+
+    Each element is either None or {"adj": list[list[float]], "node_feat": list[list[float]]}.
+    Returns None if all elements are None, otherwise {"adj": (B,N,N), "node_feat": (B,N,F)}.
+    """
+    if not isinstance(value, list):
+        return value
+    # All None → missing modality
+    if all(v is None for v in value):
+        return None
+    # Mixed None/dict — replace None with zero-filled dicts matching first non-None shape
+    first = next((v for v in value if v is not None), None)
+    if first is None:
+        return None
+    n_atoms = len(first["adj"])
+    n_feat = len(first["node_feat"][0]) if first["node_feat"] else 9
+    zero_adj = [[0.0] * n_atoms for _ in range(n_atoms)]
+    zero_feat = [[0.0] * n_feat for _ in range(n_atoms)]
+    filled = [v if v is not None else {"adj": zero_adj, "node_feat": zero_feat} for v in value]
+    try:
+        adj = torch_module.as_tensor([g["adj"] for g in filled], dtype=torch_module.float32)
+        node_feat = torch_module.as_tensor([g["node_feat"] for g in filled], dtype=torch_module.float32)
+        return {"adj": adj, "node_feat": node_feat}
+    except Exception:
+        return value
 
 
 def _maybe_tensorize_value(value: Any, torch_module: Any) -> Any:

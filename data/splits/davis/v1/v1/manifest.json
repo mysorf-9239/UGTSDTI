@@ -1,0 +1,69 @@
+{
+  "counts": {
+    "s1": {
+      "test": 3867,
+      "train": 18040,
+      "val": 3865
+    },
+    "s2": {
+      "test": 4169,
+      "train": 17813,
+      "val": 3790
+    },
+    "s3": {
+      "test": 3876,
+      "train": 18020,
+      "val": 3876
+    },
+    "s4": {
+      "test": 627,
+      "train": 12455,
+      "val": 570
+    }
+  },
+  "dataset": "davis",
+  "partitions": [
+    "train",
+    "val",
+    "test"
+  ],
+  "preprocessing_version": "v1",
+  "protocol_report": {
+    "kd_threshold_nm": 30.0,
+    "protocol_version": "davis-tdc.v1",
+    "s1": "random split",
+    "s2": "cold drug",
+    "s3": "cold target",
+    "s4": "cold drug+target"
+  },
+  "scenario_partitions": {
+    "s1": {
+      "test": "data/splits/davis/v1/v1/s1/test.jsonl",
+      "train": "data/splits/davis/v1/v1/s1/train.jsonl",
+      "val": "data/splits/davis/v1/v1/s1/val.jsonl"
+    },
+    "s2": {
+      "test": "data/splits/davis/v1/v1/s2/test.jsonl",
+      "train": "data/splits/davis/v1/v1/s2/train.jsonl",
+      "val": "data/splits/davis/v1/v1/s2/val.jsonl"
+    },
+    "s3": {
+      "test": "data/splits/davis/v1/v1/s3/test.jsonl",
+      "train": "data/splits/davis/v1/v1/s3/train.jsonl",
+      "val": "data/splits/davis/v1/v1/s3/val.jsonl"
+    },
+    "s4": {
+      "test": "data/splits/davis/v1/v1/s4/test.jsonl",
+      "train": "data/splits/davis/v1/v1/s4/train.jsonl",
+      "val": "data/splits/davis/v1/v1/s4/val.jsonl"
+    }
+  },
+  "scenarios": [
+    "s1",
+    "s2",
+    "s3",
+    "s4"
+  ],
+  "seed": 42,
+  "split_version": "v1"
+}
