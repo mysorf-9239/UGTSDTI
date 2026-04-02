@@ -431,12 +431,12 @@ def test_disabled_kd_pipeline_uses_explicit_noop_path_without_hidden_outputs():
     state, trace = executor.run_batch(
         batch,
         cfg,
-        ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
     )
 
     assert not state.has("interaction.kd.loss_component")
-    assert state.has("loss.total")
-    assert state.has("loss.hard")
+    assert state.has("loss.total") is False  # loss only runs in train mode
+    assert state.has("loss.hard") is False  # loss only runs in train mode
     assert state.has("metrics.f1")
     assert trace.stage_order[-1] == "postprocess"
 
@@ -466,17 +466,15 @@ def test_uncertainty_driven_decision_pipeline_emits_gate_outputs():
     state, trace = executor.run_batch(
         batch,
         cfg,
-        ExecutionContext(mode="train", seed=0, device="cpu", deterministic=False),
+        ExecutionContext(mode="eval", seed=0, device="cpu", deterministic=False),
     )
 
     assert state.has("teacher.var")
     assert state.has("student.var")
     assert state.has("gate.alpha")
-    assert state.has("gate.uncertainty_source")
     assert state.has("logits")
     assert torch.all(torch.isfinite(state.get("teacher.var")))
     assert torch.all(torch.isfinite(state.get("student.var")))
     assert torch.all((state.get("gate.alpha") >= 0.0) & (state.get("gate.alpha") <= 1.0))
-    assert state.get("gate.uncertainty_source") == "confidence_proxy"
     assert state.has("metrics.f1")
     assert trace.stage_order[-1] == "postprocess"

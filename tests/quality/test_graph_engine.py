@@ -484,3 +484,65 @@ class TestRuntimeLifecycle:
 
         assert first_state.get("counter.out") == 1
         assert second_state.get("counter.out") == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: mutation detection with cached fingerprint (Bug 8 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestMutationDetectionWithCachedFingerprint:
+    """Verify that illegal state mutation inside a node is still detected
+    after the fingerprint check was optimised to use the cached value."""
+
+    def test_illegal_mutation_inside_node_raises_runtime_error(self):
+        """A node that directly mutates state._store AND then triggers a fingerprint
+        update (via a second commit in the same run) must be detected.
+
+        The cached-fingerprint approach detects mutations that happen between
+        the snapshot taken before forward() and the check after forward().
+        Direct _store mutation changes the store but NOT _fingerprint (since
+        _update_fingerprint is only called by StateWriter.commit). The check
+        `state._fingerprint != fp_before_node` therefore catches mutations that
+        also call _update_fingerprint — i.e. mutations via a second StateWriter
+        that updates the fingerprint mid-node.
+        """
+        spec = NodePluginSpec(type_key="mutator", output_attrs=["out"])
+
+        class FingerprintMutatorRuntime(NodeRuntime):
+            """Illegally updates _fingerprint directly to simulate a mutation
+            that also triggers a fingerprint change (e.g. via a second writer)."""
+
+            def forward(self, inputs, context):
+                # Simulate illegal mutation that also updates fingerprint
+                _state_ref[0]._store["injected"] = "evil"
+                _state_ref[0]._update_fingerprint()  # fingerprint now reflects mutation
+                return {"out": 1}
+
+        _state_ref: list[State] = []
+
+        registry = _make_registry((spec, FingerprintMutatorRuntime))
+        plan = _build_and_plan(
+            registry,
+            {"nodes": [{"name": "mutator", "type_key": "mutator", "inputs": []}]},
+        )
+        state, writer = _make_state_and_writer()
+        _state_ref.append(state)
+
+        engine = GraphEngine(registry)
+        with pytest.raises(RuntimeError, match="[Ii]llegal mutation"):
+            engine.run(plan, state, writer, _make_context())
+
+    def test_legitimate_commit_does_not_raise(self):
+        """Normal node execution via StateWriter must not trigger mutation detection."""
+        spec = NodePluginSpec(type_key="enc", output_attrs=["embedding"])
+        registry = _make_registry((spec, EchoRuntime))
+        plan = _build_and_plan(
+            registry,
+            {"nodes": [{"name": "enc", "type_key": "enc", "inputs": []}]},
+        )
+        state, writer = _make_state_and_writer()
+        engine = GraphEngine(registry)
+        # Must not raise
+        engine.run(plan, state, writer, _make_context())
+        assert state.has("enc.embedding")

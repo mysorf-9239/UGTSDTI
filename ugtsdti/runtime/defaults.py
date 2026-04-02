@@ -23,6 +23,11 @@ from ugtsdti.nodes.baseline import (
     MLPHeadRuntime,
     SimpleDrugEncoderRuntime,
 )
+from ugtsdti.nodes.flow1 import (
+    DenseHeadRuntime,
+    GNNDrugEncoderRuntime,
+    SeqBiLSTMEncoderRuntime,
+)
 
 
 class SimpleConcatEncoderRuntime(NodeRuntime):
@@ -118,6 +123,18 @@ def build_default_graph_registry() -> NodeRegistry:
     registry.register(
         NodePluginSpec(type_key="head.mlp", output_attrs=["logits"], input_kinds=["embedding"]),
         MLPHeadRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="encoder.seq_bilstm", output_attrs=["embedding"], input_kinds=["drug_seq"]),
+        SeqBiLSTMEncoderRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="encoder.gnn_drug", output_attrs=["embedding"], input_kinds=["drug_graph"]),
+        GNNDrugEncoderRuntime,
+    )
+    registry.register(
+        NodePluginSpec(type_key="head.dense", output_attrs=["logits"], input_kinds=["embedding"]),
+        DenseHeadRuntime,
     )
     return registry
 

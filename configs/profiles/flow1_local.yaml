@@ -1,0 +1,25 @@
+extends:
+  - ../flow1_teacher_student.yaml
+
+experiment:
+  name: ugtsdti-flow1-local
+
+runtime:
+  device: cpu
+  seed: 42
+  deterministic: true
+  precision: fp32
+  num_workers: 0
+  batch_size: 16
+
+logging:
+  backend: file
+  trace_execution: true
+
+training:
+  loop:
+    epochs: 5
+    checkpoint_every_epochs: 1
+    eval_every_epochs: 1
+    early_stopping:
+      enabled: false

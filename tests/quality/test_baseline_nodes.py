@@ -87,3 +87,72 @@ def test_mlp_head_outputs_raw_logits_and_round_trips_state():
     restored.load_state_dict(payload)
     restored_outputs = restored.forward(inputs, _context())
     assert torch.allclose(outputs["logits"], restored_outputs["logits"])
+
+
+# --- Bug 6: LazyLinear state_dict safety ---
+
+
+def test_concat_fusion_state_dict_before_forward_is_empty():
+    """state_dict() before forward pass must not crash and must not serialize uninitialized weights."""
+    pytest.importorskip("torch")
+    registry = build_default_graph_registry()
+    runtime = registry.build_runtime(_definition("fusion.concat", project_dim=16))
+    payload = runtime.state_dict()
+    # projection is LazyLinear — must be skipped entirely
+    assert "projection" not in payload
+
+
+def test_mlp_head_state_dict_before_forward_is_empty():
+    """state_dict() before forward pass must not crash and must not serialize uninitialized weights."""
+    pytest.importorskip("torch")
+    registry = build_default_graph_registry()
+    runtime = registry.build_runtime(_definition("head.mlp", hidden_dim=10, output_dim=1))
+    payload = runtime.state_dict()
+    # hidden is LazyLinear — must be skipped entirely
+    assert "hidden" not in payload
+
+
+def test_concat_fusion_state_dict_after_forward_is_non_empty():
+    """state_dict() after forward pass must contain the projection weights."""
+    torch = pytest.importorskip("torch")
+    registry = build_default_graph_registry()
+    runtime = registry.build_runtime(_definition("fusion.concat", project_dim=16))
+    runtime.forward(
+        {
+            "drug_encoder.embedding": torch.randn(2, 8),
+            "protein_encoder.embedding": torch.randn(2, 12),
+        },
+        _context(),
+    )
+    payload = runtime.state_dict()
+    assert "projection" in payload
+
+
+def test_mlp_head_state_dict_after_forward_is_non_empty():
+    """state_dict() after forward pass must contain the hidden layer weights."""
+    torch = pytest.importorskip("torch")
+    registry = build_default_graph_registry()
+    runtime = registry.build_runtime(_definition("head.mlp", hidden_dim=10, output_dim=1))
+    inputs = {"fusion.embedding": torch.randn(4, 6)}
+    runtime.forward(inputs, _context())
+    payload = runtime.state_dict()
+    assert "hidden" in payload
+    assert "output" in payload
+
+
+def test_mlp_head_load_state_dict_round_trip_after_forward():
+    """load_state_dict() round-trip after forward pass must reproduce identical outputs."""
+    torch = pytest.importorskip("torch")
+    registry = build_default_graph_registry()
+    definition = _definition("head.mlp", hidden_dim=10, output_dim=1)
+    runtime = registry.build_runtime(definition)
+    inputs = {"fusion.embedding": torch.randn(4, 6)}
+    outputs = runtime.forward(inputs, _context())
+    payload = runtime.state_dict()
+
+    restored = registry.build_runtime(definition)
+    # materialize lazy layers first, then load weights
+    restored.forward(inputs, _context())
+    restored.load_state_dict(payload)
+    restored_outputs = restored.forward(inputs, _context())
+    assert torch.allclose(outputs["logits"], restored_outputs["logits"])

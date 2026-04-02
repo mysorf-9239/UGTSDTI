@@ -19,7 +19,8 @@ _RUNTIME_OPERATIONAL_HASH_FIELDS = {
     "checkpoint_path",
     "data_dir",
     "debug",
-    "deterministic",
+    # "deterministic" intentionally NOT excluded — it affects algorithm selection
+    # and therefore experiment reproducibility semantics.
     "device",
     "num_workers",
     "pin_memory",

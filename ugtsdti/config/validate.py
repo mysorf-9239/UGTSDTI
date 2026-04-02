@@ -573,24 +573,40 @@ class ConfigValidator:
     # --- 3a: roles reference valid graph outputs ----------------------
 
     def _collect_graph_output_keys(self, cfg: dict[str, Any]) -> set[str]:
-        """Collect all explicitly declared keys that graph nodes produce."""
+        """Collect all keys that graph nodes produce.
+
+        When a node declares ``output_attrs`` explicitly, those are used directly.
+        When ``output_attrs`` is absent but a graph registry is bound, the spec
+        for the node's type is consulted so that configs that rely on registry
+        defaults are not incorrectly rejected.
+        """
         graph = cfg.get("graph", {})
         nodes = graph.get("nodes", {})
         produced: set[str] = set()
 
         if isinstance(nodes, dict):
-            for node_name, node_cfg in nodes.items():
-                if not isinstance(node_cfg, dict):
-                    continue
-                for attr in node_cfg.get("output_attrs", []):
-                    produced.add(f"{node_name}.{attr}")
+            items = list(nodes.items())
         elif isinstance(nodes, list):
-            for node in nodes:
-                if not isinstance(node, dict):
-                    continue
-                node_name = node.get("name", "")
-                for attr in node.get("output_attrs", []):
+            items = [(n.get("name", ""), n) for n in nodes if isinstance(n, dict)]
+        else:
+            return produced
+
+        for node_name, node_cfg in items:
+            if not isinstance(node_cfg, dict) or not node_name:
+                continue
+            declared = node_cfg.get("output_attrs", [])
+            if declared:
+                for attr in declared:
                     produced.add(f"{node_name}.{attr}")
+            elif self._graph_registry is not None:
+                type_key = str(node_cfg.get("type_key", node_cfg.get("type", "")))
+                if type_key:
+                    try:
+                        spec = self._graph_registry.get_spec(type_key)
+                        for attr in getattr(spec, "output_attrs", []):
+                            produced.add(f"{node_name}.{attr}")
+                    except Exception:
+                        pass  # unregistered type handled elsewhere
 
         return produced
 

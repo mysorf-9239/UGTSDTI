@@ -9,6 +9,21 @@ from ugtsdti.core.errors import InvalidConfigError
 from ugtsdti.nodes.base import NodeRuntime
 
 
+def _has_uninitialized_lazy(module: Any) -> bool:
+    """Return True if module contains any uninitialized LazyModule parameters."""
+    try:
+        import torch.nn as nn
+
+        for m in module.modules():
+            if isinstance(m, nn.modules.lazy.LazyModuleMixin):
+                check = getattr(m, "has_uninitialized_params", None)
+                if callable(check) and check():
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _require_torch() -> tuple[Any, Any]:
     try:
         import torch
@@ -63,6 +78,8 @@ class _TorchRuntime(NodeRuntime):
         state: dict[str, Any] = {}
         for name, value in self.__dict__.items():
             if isinstance(value, nn.Module):
+                if _has_uninitialized_lazy(value):
+                    continue  # skip — không serialize uninitialized weights
                 state[name] = value.state_dict()
         return state
 
@@ -151,26 +168,28 @@ class ConcatFusionRuntime(_TorchRuntime):
             value if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=torch.float32)
             for value in inputs.values()
         ]
-        if len(tensors) != 2:
+        if len(tensors) < 2:
             raise InvalidConfigError(
-                f"fusion.concat expects exactly 2 inputs, got {len(tensors)}.",
+                f"fusion.concat expects at least 2 inputs, got {len(tensors)}.",
                 stage="graph",
                 component="ConcatFusionRuntime",
             )
-        left, right = tensors
-        if left.ndim != 2 or right.ndim != 2:
-            raise InvalidConfigError(
-                "fusion.concat expects rank-2 embeddings shaped (B, D).",
-                stage="graph",
-                component="ConcatFusionRuntime",
-            )
-        if left.shape[0] != right.shape[0]:
-            raise InvalidConfigError(
-                f"fusion.concat batch mismatch: {tuple(left.shape)} vs {tuple(right.shape)}.",
-                stage="graph",
-                component="ConcatFusionRuntime",
-            )
-        fused = torch.cat([left.to(dtype=torch.float32), right.to(dtype=torch.float32)], dim=1)
+        for i, t in enumerate(tensors):
+            if t.ndim != 2:
+                raise InvalidConfigError(
+                    f"fusion.concat expects rank-2 embeddings shaped (B, D); tensor {i} has shape {tuple(t.shape)}.",
+                    stage="graph",
+                    component="ConcatFusionRuntime",
+                )
+        batch_size = tensors[0].shape[0]
+        for i, t in enumerate(tensors[1:], start=1):
+            if t.shape[0] != batch_size:
+                raise InvalidConfigError(
+                    f"fusion.concat batch mismatch: tensor 0 has batch {batch_size}, tensor {i} has batch {t.shape[0]}.",
+                    stage="graph",
+                    component="ConcatFusionRuntime",
+                )
+        fused = torch.cat([t.to(dtype=torch.float32) for t in tensors], dim=1)
         return {"embedding": self.projection(fused)}
 
 

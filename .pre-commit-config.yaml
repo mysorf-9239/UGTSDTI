@@ -32,9 +32,8 @@ repos:
     hooks:
       - id: validate-config
         name: Validate YAML configs
-        entry: python -m ugtsdti validate --config
-        language: python
-        additional_dependencies: [pyyaml]
+        entry: conda run -n ugtsdti python -m ugtsdti validate --config
+        language: system
         files: ^configs/.*\.yaml$
         pass_filenames: true
 
@@ -43,8 +42,7 @@ repos:
     hooks:
       - id: validate-interaction-deps
         name: Validate interaction graph dependencies
-        entry: python -c "from ugtsdti.config.validate import validate_only; import sys; [validate_only(f) for f in sys.argv[1:]]"
-        language: python
-        additional_dependencies: [pyyaml]
+        entry: conda run -n ugtsdti python -c "from ugtsdti.config.validate import validate_only; import sys; [validate_only(f) for f in sys.argv[1:]]"
+        language: system
         files: ^configs/.*\.yaml$
         pass_filenames: true

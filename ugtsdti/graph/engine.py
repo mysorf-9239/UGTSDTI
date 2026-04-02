@@ -136,12 +136,8 @@ class GraphEngine:
             defn = defn_map[node_name]
             spec = self._registry.get_spec(defn.type_key)
 
-            # (A) BEFORE node execution
-            if state.get_fingerprint() != state._fingerprint:
-                raise RuntimeError("External mutation BEFORE node")
-
-            # Store fingerprint before node execution
-            state.get_fingerprint()
+            # (A) BEFORE node execution — snapshot cached fingerprint (O(1), no recompute)
+            fp_before_node = state._fingerprint
 
             # 1. Materialize declared inputs (shallow — no full State copy)
             inputs = self._materialize_inputs(node_name, defn.inputs, state)
@@ -165,17 +161,15 @@ class GraphEngine:
                     _check_numerical_safety(key, value, node_name)
                 qualified[key] = value
 
-            # (B) AFTER node execution (BEFORE commit)
-            fp_before = state._fingerprint
-            fp_after = state.get_fingerprint()
-            if fp_before != fp_after:
+            # (B) AFTER node execution (BEFORE commit) — compare cached fingerprints (O(1))
+            # If a node illegally mutated state outside StateWriter.commit(), the cached
+            # _fingerprint will have drifted from fp_before_node.
+            if state._fingerprint != fp_before_node:
                 raise RuntimeError("Illegal mutation INSIDE node")
 
             # 6. Commit via StateWriter (this is the ONLY allowed state change)
+            # StateWriter.commit() calls state._update_fingerprint() internally.
             writer.commit(node_name, qualified)
-
-            # (C) AFTER commit
-            assert state.get_fingerprint() == state._fingerprint
 
             # 7. Emit trace event if debug mode
             if self._debug:

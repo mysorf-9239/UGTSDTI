@@ -19,6 +19,8 @@ class ExecutionContext:
         device:        Target device string, e.g. "cpu" or "cuda:0".
         deterministic: Whether to enable deterministic algorithm mode.
         precision:     Floating-point precision mode; defaults to "fp32".
+        batch_size:    Current batch size, used by nodes with optional inputs
+                       (e.g. GNNDrugEncoderRuntime with allow_missing_input=True).
     """
 
     mode: Literal["train", "eval", "infer"]
@@ -26,3 +28,4 @@ class ExecutionContext:
     device: str
     deterministic: bool
     precision: Literal["fp32", "mixed"] = field(default="fp32")
+    batch_size: int = field(default=1)

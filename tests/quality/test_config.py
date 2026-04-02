@@ -948,3 +948,113 @@ class TestDataBootstrapConfig:
         cfg["data"]["source"] = {"type": "pytdc", "auto_prepare": True, "tdc_name": "DAVIS"}
 
         assert_valid(cfg)
+
+
+# ===========================================================================
+# Bug 5: Cross-section validation with implicit output_attrs (registry-based)
+# ===========================================================================
+
+
+class TestCrossSectionValidationWithRegistryOutputAttrs:
+    """Nodes without explicit output_attrs should pass validation when registry is bound."""
+
+    def _make_registry(self):
+        """Build a minimal NodeRegistry with two node types."""
+        from ugtsdti.graph.registry import NodeRegistry
+        from ugtsdti.graph.specs import NodePluginSpec
+        from ugtsdti.nodes.base import NodeRuntime
+
+        class _DummyRuntime(NodeRuntime):
+            def forward(self, inputs, state):  # pragma: no cover
+                return {}
+
+        registry = NodeRegistry()
+        registry.register(
+            NodePluginSpec(type_key="encoder.baseline", output_attrs=["embedding"]),
+            _DummyRuntime,
+        )
+        registry.register(
+            NodePluginSpec(type_key="head.linear", output_attrs=["logits"]),
+            _DummyRuntime,
+        )
+        return registry
+
+    def test_node_without_explicit_output_attrs_passes_with_registry(self):
+        """Config where nodes omit output_attrs should pass when registry is bound."""
+        cfg = {
+            "version": "v1",
+            "data": {"dataset": "davis"},
+            "scenario": {"train": "s1", "eval": ["s1"]},
+            "modalities": {
+                "available": ["sequence"],
+                "student": {"uses": ["sequence"]},
+            },
+            "graph": {
+                "nodes": {
+                    "student_encoder": {
+                        "type": "encoder.baseline",
+                        "inputs": ["drug_seq", "protein_seq"],
+                        # no output_attrs — should be inferred from registry
+                    },
+                    "student_head": {
+                        "type": "head.linear",
+                        "inputs": ["student_encoder.embedding"],
+                        # no output_attrs — should be inferred from registry
+                    },
+                }
+            },
+            "roles": {
+                "student": {
+                    "outputs": ["student_head.logits"],
+                    "aggregation": "first",
+                }
+            },
+            "interaction": {"order": [], "dependencies": {}},
+            "decision": {"type": "identity", "strategy": "identity"},
+            "training": {"student": {"freeze": False}},
+            "loss": {"type": "hard", "hard_weight": 1.0, "map": {}},
+        }
+
+        registry = self._make_registry()
+        bound_validator = ConfigValidator(graph_registry=registry)
+        # Should not raise — registry fills in the missing output_attrs
+        bound_validator.validate(cfg)
+
+    def test_node_without_output_attrs_and_no_registry_fails(self):
+        """Without a registry, nodes with no output_attrs produce nothing → role ref fails."""
+        cfg = {
+            "version": "v1",
+            "data": {"dataset": "davis"},
+            "scenario": {"train": "s1", "eval": ["s1"]},
+            "modalities": {
+                "available": ["sequence"],
+                "student": {"uses": ["sequence"]},
+            },
+            "graph": {
+                "nodes": {
+                    "student_encoder": {
+                        "type": "encoder.baseline",
+                        "inputs": ["drug_seq", "protein_seq"],
+                    },
+                    "student_head": {
+                        "type": "head.linear",
+                        "inputs": ["student_encoder.embedding"],
+                    },
+                }
+            },
+            "roles": {
+                "student": {
+                    "outputs": ["student_head.logits"],
+                    "aggregation": "first",
+                }
+            },
+            "interaction": {"order": [], "dependencies": {}},
+            "decision": {"type": "identity", "strategy": "identity"},
+            "training": {"student": {"freeze": False}},
+            "loss": {"type": "hard", "hard_weight": 1.0, "map": {}},
+        }
+
+        # No registry bound — validator cannot infer outputs → should raise
+        unbound_validator = ConfigValidator()
+        with pytest.raises(InvalidConfigError, match="student_head.logits"):
+            unbound_validator.validate(cfg)

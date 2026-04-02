@@ -1,0 +1,231 @@
+contract_version: v1
+version: v1
+
+experiment:
+  name: ugtsdti-flow1
+
+data:
+  dataset: davis
+  preprocessing_version: v1
+  split_version: v1
+  source:
+    type: artifacts
+    auto_prepare: false
+
+scenario:
+  train: s1
+  eval: [s1, s2, s3, s4]
+
+modalities:
+  available: [sequence, structure]
+  teacher:
+    uses: [sequence, structure]
+  student:
+    uses: [sequence]
+
+graph:
+  nodes:
+    # ── Teacher — sequence branch ──────────────────────────────────────────
+    - name: t_drug_enc
+      type: encoder.seq_bilstm
+      inputs: [drug_seq]
+      output_attrs: [embedding]
+      params:
+        vocab_size: 64
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+
+    - name: t_prot_enc
+      type: encoder.seq_bilstm
+      inputs: [protein_seq]
+      output_attrs: [embedding]
+      params:
+        vocab_size: 32
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+
+    # ── Teacher — structure branch ─────────────────────────────────────────
+    - name: t_graph_enc
+      type: encoder.gnn_drug
+      inputs: [drug_graph]
+      output_attrs: [embedding]
+      params:
+        node_feat_dim: 9
+        hidden_dim: 64
+        proj_dim: 64
+        normalize_adj: true
+        allow_missing_input: true   # S2/S4: returns zero embedding when drug_graph absent
+
+    # ── Teacher — fusion + head ────────────────────────────────────────────
+    - name: teacher_fusion
+      type: fusion.concat
+      inputs:
+        - t_drug_enc.embedding
+        - t_prot_enc.embedding
+        - t_graph_enc.embedding
+      output_attrs: [embedding]
+      params:
+        project_dim: 128
+
+    - name: teacher_head
+      type: head.dense
+      inputs: [teacher_fusion.embedding]
+      output_attrs: [logits]
+      params:
+        hidden_dim: 64
+        output_dim: 1
+
+    # ── Student — sequence only ────────────────────────────────────────────
+    - name: s_drug_enc
+      type: encoder.seq_bilstm
+      inputs: [drug_seq]
+      output_attrs: [embedding]
+      params:
+        vocab_size: 64
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+
+    - name: s_prot_enc
+      type: encoder.seq_bilstm
+      inputs: [protein_seq]
+      output_attrs: [embedding]
+      params:
+        vocab_size: 32
+        embedding_dim: 32
+        hidden_dim: 64
+        kernel_size_1: 3
+        kernel_size_2: 5
+        lstm_dim: 64
+        proj_dim: 64
+
+    # ── Student — fusion + head ────────────────────────────────────────────
+    - name: student_fusion
+      type: fusion.concat
+      inputs:
+        - s_drug_enc.embedding
+        - s_prot_enc.embedding
+      output_attrs: [embedding]
+      params:
+        project_dim: 128
+
+    - name: student_head
+      type: head.dense
+      inputs: [student_fusion.embedding]
+      output_attrs: [logits]
+      params:
+        hidden_dim: 64
+        output_dim: 1
+
+roles:
+  teacher:
+    outputs: [teacher_head.logits]
+    aggregation: first
+  student:
+    outputs: [student_head.logits]
+    aggregation: first
+
+interaction:
+  order: [kd, uncertainty]
+  dependencies: {}
+  kd:
+    type: kd.standard
+    inputs: [teacher.logits, student.logits]   # role outputs — NOT graph outputs
+    params:
+      enabled: true
+      mode: logits
+      temperature: 4.0
+  uncertainty:
+    type: uncertainty.confidence_proxy
+    inputs: [teacher.logits, student.logits]   # role outputs
+    params:
+      enabled: true
+      targets:
+        teacher: true
+        student: true
+
+decision:
+  type: gate.uncertainty
+  mode: heuristic
+  strategy: soft
+  use_uncertainty: true
+  inputs: [teacher.logits, student.logits, student.var]   # explicit declared inputs
+  fallback:
+    no_teacher: student
+    no_student: teacher
+
+training:
+  teacher:
+    freeze: false   # joint training; set true for frozen-teacher mode
+  student:
+    freeze: false
+  kd:
+    schedule: warmup
+    warmup_steps: 100
+    lambda_max: 0.5
+  gate:
+    trainable: false
+  optimizer:
+    type: adam
+    lr: 0.001
+    weight_decay: 1.0e-4
+  scheduler:
+    type: plateau
+    mode: max
+    factor: 0.5
+    patience: 3
+  loop:
+    epochs: 50
+    checkpoint_every_epochs: 5
+    eval_every_epochs: 1
+    eval_partition: test
+    max_grad_norm: 5.0
+    fail_on_nonfinite_loss: true
+    select_checkpoint: best
+    best_metric: metrics.auroc
+    best_mode: max
+    early_stopping:
+      enabled: true
+      patience: 10
+      min_delta: 0.001
+
+loss:
+  type: composite
+  hard_weight: 1.0
+  map:
+    kd:
+      from: interaction.kd.loss_component
+      weight: 0.5   # overridden at runtime by warmup schedule
+
+metrics:
+  primary: auroc
+  enabled: [auroc, auprc]
+  by_scenario: true
+
+diagnostics:
+  disagreement: true
+  gate_alpha: true
+  uncertainty_error: true
+
+logging:
+  backend: file
+  trace_execution: false
+
+runtime:
+  seed: 42
+  deterministic: true
+  device: cpu
+  precision: fp32
+  num_workers: 0
+  batch_size: 32

@@ -88,7 +88,11 @@ class PipelineExecutor:
         cfg: dict[str, Any],
         context: ExecutionContext,
     ) -> tuple[State, PipelineTrace]:
-        state, _, trace = self._run_core_pipeline(batch, cfg, context)
+        state, writer, trace = self._run_core_pipeline(batch, cfg, context)
+        # Decision runs here, not in core pipeline
+        decision = self._build_decision_module(cfg)
+        writer.commit("decision", decision.forward(state, context))
+        trace.state_boundary_summaries["decision"] = state.keys()
         return state, trace
 
     def run_batch(
@@ -141,6 +145,13 @@ class PipelineExecutor:
         writer.commit("batch", dict(batch))
         trace.state_boundary_summaries["batch"] = state.keys()
 
+        # Inject batch_size into context so optional-input nodes can infer B
+        batch_size = _infer_batch_size_from_batch(batch)
+        if batch_size != context.batch_size:
+            from dataclasses import replace as _replace
+
+            context = _replace(context, batch_size=batch_size)
+
         graph_plan = cfg["graph_plan"]
         trace.graph_trace = self._graph_engine.run(graph_plan, state, writer, context)
         trace.state_boundary_summaries["graph"] = state.keys()
@@ -153,12 +164,6 @@ class PipelineExecutor:
         if cfg.get("interaction_plan"):
             self._run_interactions(state, writer, cfg, context)
             trace.state_boundary_summaries["interaction"] = state.keys()
-
-        # Skip decision in new pipeline - handled by postprocess
-        if not cfg.get("postprocess"):
-            decision = self._build_decision_module(cfg)
-            writer.commit("decision", decision.forward(state, context))
-            trace.state_boundary_summaries["decision"] = state.keys()
 
         return state, writer, trace
 
@@ -500,13 +505,14 @@ def _scheduled_kd_weight(cfg: dict[str, Any], step_idx: int) -> float | None:
     mapping = cfg.get("loss", {}).get("map", {}).get("kd")
     if not isinstance(mapping, dict):
         return None
-    target_weight = float(mapping.get("weight", 1.0))
     if schedule == "constant":
-        return target_weight
+        return float(mapping.get("weight", 1.0))
     if schedule == "warmup":
-        warmup_steps = max(1, int(kd_cfg.get("warmup_steps", 1)))
+        # REQ-FLOW1-014: read lambda_max from training.kd, not from loss.map.kd.weight
+        lambda_max = float(kd_cfg.get("lambda_max", mapping.get("weight", 1.0)))
+        warmup_steps = max(1, int(kd_cfg.get("warmup_steps", 100)))
         progress = min(1.0, float(step_idx + 1) / float(warmup_steps))
-        return target_weight * progress
+        return lambda_max * progress
     raise InvalidConfigError(
         f"Unsupported KD schedule {schedule!r}.",
         stage="train",
@@ -683,3 +689,22 @@ def _is_finite_number(value: float | None) -> bool:
     if value is None:
         return True
     return value == value and value not in {float("inf"), float("-inf")}
+
+
+def _infer_batch_size_from_batch(batch: dict[str, Any]) -> int:
+    """Infer batch size from the first tensor-like value in batch."""
+    try:
+        import torch
+
+        for v in batch.values():
+            if isinstance(v, torch.Tensor):
+                return int(v.shape[0])
+    except ImportError:
+        pass
+    for v in batch.values():
+        if hasattr(v, "__len__") and v is not None:
+            try:
+                return len(v)
+            except Exception:
+                pass
+    return 1

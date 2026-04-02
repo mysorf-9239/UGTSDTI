@@ -236,9 +236,8 @@ def _isolate_value(value: Any) -> Any:
         import torch
 
         if isinstance(value, torch.Tensor):
-            # Detach from computation graph AND clone to break shared memory
-            # This ensures no gradient leakage and complete isolation
-            return value.detach().clone()
+            # Clone to break shared memory while preserving gradient graph
+            return value.clone()
     except ImportError:
         pass
 

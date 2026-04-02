@@ -39,8 +39,8 @@ def run_postprocess(state: State, config: Any, context: ExecutionContext, labels
     if context.mode == "train":
         state = run_loss(state, loss_cfg, labels)
 
-    # 4. Metrics
-    if context.mode in ("eval", "inference") and metrics_cfg and metrics_cfg.get("enabled"):
+    # 4. Metrics — run regardless of mode when enabled
+    if metrics_cfg and metrics_cfg.get("enabled"):
         state = run_metrics(state, metrics_cfg, context, labels)
 
     return state
